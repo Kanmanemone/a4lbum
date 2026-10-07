@@ -1,0 +1,14 @@
+# Logs
+*.log
+
+# Secrets & credentials - never commit these
+*.env
+*.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spec Kit tooling (installed locally, not part of the product)
+.specify/
+.claude/skills/speckit-*/
