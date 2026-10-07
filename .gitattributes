@@ -1,0 +1,7 @@
+# Keep Windows line endings for scripts, also in GitHub's "Download ZIP".
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# The bundled program must be stored byte for byte.
+/app/** -text
+*.exe binary

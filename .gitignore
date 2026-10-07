@@ -21,3 +21,10 @@ __pycache__/
 
 # Generated albums
 *_album.pdf
+
+# Build (build_portable.ps1)
+.build-venv/
+build/
+
+# The bundled program is committed as-is, even its .pyc files
+!/app/**
