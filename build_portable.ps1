@@ -9,7 +9,8 @@
 
     1. Recreate .build-venv with requirements-build.txt only (no stray packages).
     2. Build with PyInstaller (onedir, no console window). The runtime goes to app\
-       next to the exe (--contents-directory app).
+       next to the exe (--contents-directory app). The exe gets packaging\app.ico,
+       Tk's feather icon taken from tk86t.dll, so the file and its window look the same.
     3. Smoke test: copy the result to a Korean/space path, hide Python from PATH,
        and make a real album (JPEG + HEIC + GIF). Stop here if it fails.
     4. Replace "앨범 만들기.exe" and app\ at the repo root.
@@ -58,6 +59,7 @@ try {
     Step "2/4 $ExeName 빌드 (PyInstaller)"
     Invoke-Checked $VenvPy @('-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN',
         '--windowed', '--onedir', '--name', $AppName, '--contents-directory', 'app',
+        '--icon', (Join-Path $PSScriptRoot 'packaging\app.ico'),
         '--distpath', 'build\dist', '--workpath', 'build\work', '--specpath', 'build',
         '--paths', (Join-Path $PSScriptRoot 'scripts'), (Join-Path $PSScriptRoot 'scripts\album_app.py'))
 
