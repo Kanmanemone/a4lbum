@@ -3,6 +3,7 @@
 import os
 import time
 import tkinter as tk
+from datetime import datetime
 
 import pytest
 
@@ -236,7 +237,7 @@ def test_move_buttons_switch_to_custom(root, photo_dir, four_photos, index, wher
 
 def test_row_buttons_call_move(root, photo_dir, four_photos):
     app = album_app.AlbumApp(root, str(photo_dir))
-    buttons = app.photo_list.rows[2][1]
+    buttons = app.photo_list.rows[2][2]
     assert [b.cget("text") for b in buttons] == ["▲", "▼", "맨 위로", "맨 아래로"]
     # A gap on the left of 맨 위로 separates it from ▲ ▼.
     assert [b.grid_info()["padx"] for b in buttons] == [0, 0, (8, 0), 0]
@@ -313,6 +314,19 @@ def test_new_folder_list_starts_at_the_top(root, photo_dir, make_jpeg, tmp_path)
     app.photo_dir.set(str(other))
     root.update()
     assert canvas.canvasy(0) == 0
+
+
+def test_date_sorts_show_their_dates(root, photo_dir, make_jpeg):
+    os.utime(make_jpeg("b.jpg"), (0, datetime(2024, 5, 2, 8, 0, 0).timestamp()))
+    os.utime(make_jpeg("a.jpg"), (0, datetime(2024, 5, 1, 9, 30, 15).timestamp()))
+    app = album_app.AlbumApp(root, str(photo_dir))
+    assert app.photo_list.dates() == ["", ""]
+
+    app.sort_mode.set("수정한 날짜 순 정렬")
+    app.on_sort_selected()
+    assert app.photo_list.dates() == ["2024-05-01 09:30:15", "2024-05-02 08:00:00"]
+    app.move(1, "top")  # 커스텀 keeps showing the dates it was sorted by
+    assert app.photo_list.dates() == ["2024-05-02 08:00:00", "2024-05-01 09:30:15"]
 
 
 def test_strip_number_checkbox_explains_itself_on_hover(root):

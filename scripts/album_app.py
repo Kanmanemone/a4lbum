@@ -18,6 +18,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -93,6 +94,10 @@ def sort_photos(photos, mode, reverse):
     return result
 
 
+def _format_date(timestamp):
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _run(photo_dir, output, order=None, strip_number=True):
     """Build the album; return the lines to show and the PDF path (None on failure)."""
     try:
@@ -140,31 +145,37 @@ class PhotoList(ttk.Frame):
         index = len(self.rows)
         label = ttk.Label(self.inner, anchor="w")
         label.grid(row=index, column=0, sticky="ew")
+        date = ttk.Label(self.inner, anchor="e")
+        date.grid(row=index, column=1, sticky="e", padx=(0, 12))
         # Width only for the one-symbol buttons; Korean words size themselves.
         buttons = [ttk.Button(self.inner, text=move_label(where), width=3 if where in ("up", "down") else None,
                               command=lambda w=where: self.on_move(index, w)) for where in MOVES]
-        for column, button in enumerate(buttons, 1):
+        for column, button in enumerate(buttons, 2):
             # A small gap separates the one-step ▲ ▼ from 맨 위로/맨 아래로.
-            button.grid(row=index, column=column, padx=(8, 0) if column == 3 else 0)
-        self.rows.append((label, buttons))
+            button.grid(row=index, column=column, padx=(8, 0) if column == 4 else 0)
+        self.rows.append((label, date, buttons))
 
-    def show(self, names, folder_chosen):
-        """names in list order."""
+    def show(self, names, dates, folder_chosen):
+        """names and dates (text shown after the name, may be "") in list order."""
         while len(self.rows) < len(names):
             self._add_row()
         while len(self.rows) > len(names):
-            label, buttons = self.rows.pop()
-            for widget in (label, *buttons):
+            label, date, buttons = self.rows.pop()
+            for widget in (label, date, *buttons):
                 widget.destroy()
-        for i, ((label, _), name) in enumerate(zip(self.rows, names), 1):
+        for i, ((label, date, _), name, text) in enumerate(zip(self.rows, names, dates), 1):
             label.configure(text=f"{i:>3}   {name}")
+            date.configure(text=text)
         if names or not folder_chosen:
             self.empty.grid_forget()
         else:
             self.empty.grid(row=0, column=0, sticky="w")
 
     def labels(self):
-        return [label.cget("text") for label, _ in self.rows]
+        return [label.cget("text") for label, _, _ in self.rows]
+
+    def dates(self):
+        return [date.cget("text") for _, date, _ in self.rows]
 
 
 class AlbumApp:
@@ -174,6 +185,7 @@ class AlbumApp:
         self.last_pdf = None
         self.output_custom = False
         self.photos = []  # make_album.PhotoFile, in album order
+        self.dated_by = "name"  # sort key whose date the list shows
         self._results = queue.Queue()
 
         root.title(TITLE)
@@ -267,7 +279,10 @@ class AlbumApp:
         return next(k for k in (*SORT_KEYS, CUSTOM) if sort_label(k) == self.sort_mode.get())
 
     def resort(self):
-        self.photos = sort_photos(self.photos, self.mode(), self.reverse.get())
+        mode = self.mode()
+        self.photos = sort_photos(self.photos, mode, self.reverse.get())
+        # The list keeps showing these dates after hand moves (커스텀).
+        self.dated_by = mode
         self._show_photos()
 
     def on_sort_selected(self, _event=None):
@@ -284,8 +299,16 @@ class AlbumApp:
         self.reverse_check.state(["disabled"])
         self._show_photos()
 
+    def _date_text(self, photo):
+        if self.dated_by == "created":
+            return _format_date(photo.created)
+        if self.dated_by == "modified":
+            return _format_date(photo.modified)
+        return ""
+
     def _show_photos(self):
-        self.photo_list.show([p.name for p in self.photos], self._folder() is not None)
+        dates = [self._date_text(p) for p in self.photos]
+        self.photo_list.show([p.name for p in self.photos], dates, self._folder() is not None)
 
     # --- fields ---------------------------------------------------------------
 
