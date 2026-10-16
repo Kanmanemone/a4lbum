@@ -329,6 +329,45 @@ def test_date_sorts_show_their_dates(root, photo_dir, make_jpeg):
     assert app.photo_list.dates() == ["2024-05-02 08:00:00", "2024-05-01 09:30:15"]
 
 
+def test_date_taken_is_read_only_for_its_sort(root, photo_dir, make_jpeg, monkeypatch):
+    os.utime(make_jpeg("plain.jpg"), (0, datetime(2024, 5, 1, 9, 0, 0).timestamp()))
+    calls = []
+    monkeypatch.setattr(album_app.make_album, "date_taken", lambda path: calls.append(path))
+    app = album_app.AlbumApp(root, str(photo_dir))
+    assert calls == []
+
+    app.sort_mode.set("촬영한 날짜 순 정렬")
+    app.on_sort_selected()
+    app.reverse.set(True)
+    app.resort()
+    assert len(calls) == 1  # once per folder
+    assert app.photo_list.dates() == ["⚠ 2024-05-01 09:00:00"]
+
+
+def test_no_taken_note_shows_only_with_the_mark(root, photo_dir, make_jpeg, monkeypatch):
+    make_jpeg("plain.jpg")
+    taken = {"plain.jpg": None}
+    monkeypatch.setattr(album_app.make_album, "date_taken", lambda path: taken[path.name])
+    app = album_app.AlbumApp(root, str(photo_dir))
+    shown = lambda: app.no_taken_note.winfo_manager() == "pack"
+    assert not shown()
+
+    app.sort_mode.set("촬영한 날짜 순 정렬")
+    app.on_sort_selected()
+    assert shown()
+    app.move(0, "top")  # 커스텀 keeps the taken dates and the note
+    assert shown()
+    app.sort_mode.set("수정한 날짜 순 정렬")
+    app.on_sort_selected()
+    assert not shown()
+
+    taken["plain.jpg"] = datetime(2024, 5, 1).timestamp()
+    app.load_photos()  # the same folder read again: now every photo has EXIF
+    app.sort_mode.set("촬영한 날짜 순 정렬")
+    app.on_sort_selected()
+    assert not shown()
+
+
 def test_strip_number_checkbox_explains_itself_on_hover(root):
     app = album_app.AlbumApp(root)
     tip = app.strip_tip

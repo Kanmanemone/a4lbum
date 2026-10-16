@@ -23,6 +23,7 @@ import stat
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -82,6 +83,8 @@ IGNORED_NAMES = {"thumbs.db", "desktop.ini"}
 ZERO_WIDTH = {"\u200d", "\ufe0e", "\ufe0f"}
 
 ORIENTATION_TAG = 0x0112
+EXIF_IFD = 0x8769
+DATE_TAKEN_TAGS = (0x9003, 0x9004)  # DateTimeOriginal, DateTimeDigitized
 
 # --- Data model ----------------------------------------------------------------
 
@@ -124,11 +127,15 @@ PRINTABLE = Rect(MARGIN, MARGIN, PAGE_W - 2 * MARGIN, PAGE_H - 2 * MARGIN)
 
 @dataclass(frozen=True)
 class PhotoFile:
-    """A photo file as listed in the app window (dates are epoch seconds)."""
+    """A photo file as listed in the app window (dates are epoch seconds).
+
+    taken is the camera's shooting time from EXIF, or None when the photo has none.
+    """
 
     name: str
     created: float
     modified: float
+    taken: float | None = None
 
 
 @dataclass
@@ -273,8 +280,28 @@ def _photo_entries(folder):
             yield entry, None
 
 
+def date_taken(path):
+    """EXIF shooting time as epoch seconds (local time), or None.
+
+    Only the file header is read, not the pixels.
+    """
+    try:
+        with Image.open(path) as img:
+            exif = img.getexif().get_ifd(EXIF_IFD)
+        for tag in DATE_TAKEN_TAGS:
+            value = exif.get(tag)
+            if isinstance(value, str) and value.strip():
+                return datetime.strptime(value.strip()[:19], "%Y:%m:%d %H:%M:%S").timestamp()
+    except Exception:  # unreadable file or malformed date such as "0000:00:00 00:00:00"
+        pass
+    return None
+
+
 def list_photo_files(folder):
-    """The files the album would try, with their file dates, without opening them."""
+    """The files the album would try, with their file dates, without opening them.
+
+    taken stays None here; reading EXIF is slow for large folders (see date_taken).
+    """
     try:
         photos = []
         for entry, _ in _photo_entries(folder):

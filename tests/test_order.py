@@ -1,8 +1,11 @@
 """Photo list for the app window, its sort modes, and build_album(order, strip_number)."""
 
 import os
+from dataclasses import replace
+from datetime import datetime
 
 import pytest
+from PIL import Image
 
 import album_app
 import make_album
@@ -50,9 +53,9 @@ def test_missing_folder_lists_nothing(tmp_path):
 # --- sort_photos -------------------------------------------------------------
 
 PHOTOS = [
-    PhotoFile("10_산.jpg", created=100, modified=300),
-    PhotoFile("2_바다.jpg", created=300, modified=100),
-    PhotoFile("1_집.jpg", created=200, modified=100),
+    PhotoFile("10_산.jpg", created=100, modified=300, taken=50),
+    PhotoFile("2_바다.jpg", created=300, modified=100),  # no EXIF date: modified date stands in
+    PhotoFile("1_집.jpg", created=200, modified=100, taken=400),
 ]
 
 
@@ -67,6 +70,7 @@ def names(photos):
         ("created", ["10_산.jpg", "1_집.jpg", "2_바다.jpg"]),
         # Same modified date for 1_ and 2_: name order breaks the tie.
         ("modified", ["1_집.jpg", "2_바다.jpg", "10_산.jpg"]),
+        ("taken", ["10_산.jpg", "2_바다.jpg", "1_집.jpg"]),
     ],
 )
 def test_sort_modes_and_reverse(mode, expected):
@@ -79,6 +83,32 @@ def test_modified_date_sort_on_real_files(photo_dir, make_jpeg):
         os.utime(make_jpeg(name), (0, 1_000_000 - i * 1000))
     photos = make_album.list_photo_files(photo_dir)
     assert names(album_app.sort_photos(photos, "modified", False)) == ["c.jpg", "b.jpg", "a.jpg"]
+
+
+def save_with_date_taken(path, value):
+    exif = Image.Exif()
+    exif.get_ifd(make_album.EXIF_IFD)[0x9003] = value
+    Image.new("RGB", (40, 30)).save(path, "JPEG", exif=exif)
+
+
+def test_date_taken_reads_exif(photo_dir, make_jpeg):
+    save_with_date_taken(photo_dir / "a.jpg", "2024:05:01 10:20:30")
+    save_with_date_taken(photo_dir / "zero.jpg", "0000:00:00 00:00:00")
+    make_jpeg("plain.jpg")
+    (photo_dir / "broken.jpg").write_bytes(b"not an image")
+
+    assert make_album.date_taken(photo_dir / "a.jpg") == datetime(2024, 5, 1, 10, 20, 30).timestamp()
+    for name in ["zero.jpg", "plain.jpg", "broken.jpg"]:
+        assert make_album.date_taken(photo_dir / name) is None
+
+
+def test_date_taken_sort_on_real_files(photo_dir, make_jpeg):
+    save_with_date_taken(photo_dir / "a.jpg", "2024:05:01 12:00:00")
+    save_with_date_taken(photo_dir / "b.jpg", "2024:05:01 09:00:00")
+    os.utime(make_jpeg("c.jpg"), (0, 0))  # no EXIF, modified in 1970: goes first
+    photos = [replace(p, taken=make_album.date_taken(photo_dir / p.name))
+              for p in make_album.list_photo_files(photo_dir)]
+    assert names(album_app.sort_photos(photos, "taken", False)) == ["c.jpg", "b.jpg", "a.jpg"]
 
 
 # --- build_album(order, strip_number) ------------------------------------------

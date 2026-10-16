@@ -18,6 +18,7 @@ import queue
 import sys
 import threading
 import tkinter as tk
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -25,8 +26,11 @@ from tkinter import filedialog, messagebox, ttk
 import make_album
 
 TITLE = "A4 사진 앨범 만들기"
-SORT_KEYS = ("name", "created", "modified")
+SORT_KEYS = ("name", "created", "modified", "taken")
 CUSTOM = "custom"  # after the user moves a photo by hand; not selectable
+# Marks a 촬영한 날짜 that is really the modified date (no EXIF). Plain U+26A0:
+# Tk draws no color emoji, and the U+FE0F variant may show as a box.
+NO_TAKEN_MARK = "⚠"
 MOVES = ("up", "down", "top", "bottom")
 
 
@@ -35,6 +39,7 @@ def sort_label(key):
     return {"name": "이름 순 정렬",
             "created": "만든 날짜 순 정렬",
             "modified": "수정한 날짜 순 정렬",
+            "taken": "촬영한 날짜 순 정렬",
             CUSTOM: "커스텀"}[key]
 
 
@@ -81,11 +86,16 @@ class Tooltip:
 
 
 def sort_photos(photos, mode, reverse):
-    """Photos (make_album.PhotoFile) in the order of a sort key; date ties go by name."""
+    """Photos (make_album.PhotoFile) in the order of a sort key; date ties go by name.
+
+    Photos without an EXIF shooting time use their modified date for "taken".
+    """
     if mode == "created":
         key = lambda p: (p.created, make_album.natural_key(p.name))
     elif mode == "modified":
         key = lambda p: (p.modified, make_album.natural_key(p.name))
+    elif mode == "taken":
+        key = lambda p: (p.modified if p.taken is None else p.taken, make_album.natural_key(p.name))
     else:
         key = lambda p: make_album.natural_key(p.name)
     result = sorted(photos, key=key)
@@ -185,6 +195,7 @@ class AlbumApp:
         self.last_pdf = None
         self.output_custom = False
         self.photos = []  # make_album.PhotoFile, in album order
+        self.taken_read = False  # EXIF shooting times read for this folder (see _read_taken)
         self.dated_by = "name"  # sort key whose date the list shows
         self._results = queue.Queue()
 
@@ -230,6 +241,7 @@ class AlbumApp:
         self.reverse_check = ttk.Checkbutton(bar, text="역순(내림차순)으로 정렬", variable=self.reverse,
                                              command=self.resort)
         self.reverse_check.pack(side="left", padx=6)
+        self.no_taken_note = ttk.Label(bar, text=f"{NO_TAKEN_MARK} 촬영 정보가 없어 수정한 날짜로 대신함")
         self.photo_list = PhotoList(order_frame, self.move)
         self.photo_list.pack(fill="both", expand=True)
 
@@ -268,11 +280,29 @@ class AlbumApp:
     def load_photos(self, *_):
         folder = self._folder()
         self.photos = make_album.list_photo_files(folder) if folder else []
+        self.taken_read = False
         if self.mode() == CUSTOM:
             self.sort_mode.set(sort_label("name"))
             self.reverse_check.state(["!disabled"])
         self.resort()
         self.photo_list.canvas.yview_moveto(0)  # a new folder starts at its first photo
+
+    def _read_taken(self):
+        """Read EXIF shooting times once per folder, only when 촬영한 날짜 순 needs them.
+
+        Opening every photo (large HEIC files included) can take seconds, so a
+        plain folder listing does not do it.
+        """
+        folder = self._folder()
+        if folder and not self.taken_read:
+            self.root.configure(cursor="watch")
+            self.root.update_idletasks()
+            try:
+                self.photos = [replace(p, taken=make_album.date_taken(Path(folder, p.name)))
+                               for p in self.photos]
+            finally:
+                self.root.configure(cursor="")
+            self.taken_read = True
 
     def mode(self):
         """The sort key of the text in the sort box (CUSTOM after hand moves)."""
@@ -280,6 +310,8 @@ class AlbumApp:
 
     def resort(self):
         mode = self.mode()
+        if mode == "taken":
+            self._read_taken()
         self.photos = sort_photos(self.photos, mode, self.reverse.get())
         # The list keeps showing these dates after hand moves (커스텀).
         self.dated_by = mode
@@ -304,11 +336,20 @@ class AlbumApp:
             return _format_date(photo.created)
         if self.dated_by == "modified":
             return _format_date(photo.modified)
+        if self.dated_by == "taken":
+            if photo.taken is None:
+                return f"{NO_TAKEN_MARK} {_format_date(photo.modified)}"
+            return _format_date(photo.taken)
         return ""
 
     def _show_photos(self):
         dates = [self._date_text(p) for p in self.photos]
         self.photo_list.show([p.name for p in self.photos], dates, self._folder() is not None)
+        # Explain the mark only while at least one row shows it.
+        if any(d.startswith(NO_TAKEN_MARK) for d in dates):
+            self.no_taken_note.pack(side="left", padx=6)
+        else:
+            self.no_taken_note.pack_forget()
 
     # --- fields ---------------------------------------------------------------
 
