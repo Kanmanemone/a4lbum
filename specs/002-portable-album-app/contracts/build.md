@@ -12,6 +12,7 @@ powershell -ExecutionPolicy Bypass -File build_portable.ps1 [-Python <python.exe
 
 ## 단계
 
+0. 저장소 안의 exe가 실행 중이면 바로 멈춘다(`실행 중인 앨범 프로그램을 먼저 닫아 주세요: …`). 실행 중인 exe가 `app\`을 잡고 있으면 4단계가 중간에 실패해 `app\`이 반쯤 지워지기 때문이다.
 1. `.build-venv\`를 지우고 새로 만든 뒤 `pip install -r requirements-build.txt`를 실행한다(research R3).
 2. PyInstaller를 실행한다: `--noconfirm --clean --windowed --onedir --name "앨범 만들기" --contents-directory app --distpath build\dist --workpath build\work --specpath build --paths scripts scripts\album_app.py`. 결과는 `build\dist\앨범 만들기\`(`앨범 만들기.exe` + `app\`)다.
 3. **Smoke test** (FR-010, research R4):

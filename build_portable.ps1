@@ -38,6 +38,12 @@ function Invoke-Checked {
 }
 
 try {
+    # A running exe locks app\ and step 4 would fail halfway, leaving app\ half deleted.
+    $running = Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$PSScriptRoot\") -and $_.Path.EndsWith('.exe') }
+    if ($running) {
+        throw "실행 중인 앨범 프로그램을 먼저 닫아 주세요: $(($running | ForEach-Object { Split-Path $_.Path -Leaf }) -join ', ')"
+    }
+
     Step '1/4 빌드용 가상환경 만들기 (.build-venv)'
     if (Test-Path $Venv) { Remove-Item -Recurse -Force $Venv }
     if ($Python) {
