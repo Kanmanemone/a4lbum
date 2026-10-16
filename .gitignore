@@ -19,8 +19,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 
-# Generated albums
+# Generated albums (except the example, remade by make_example.ps1)
 *_album.pdf
+!/examples/photos_album.pdf
 
 # Build (build_portable.ps1)
 .build-venv/

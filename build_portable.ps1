@@ -21,6 +21,7 @@
        from PATH, and make a real album (JPEG + HEIC + GIF). Stop here if it fails.
     4. Replace both exes and app\ at the repo root (and remove the old single
        "앨범 만들기.exe" if it is still there).
+    5. Remake examples\photos_album.pdf with the new Korean exe (make_example.ps1).
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build_portable.ps1
@@ -59,7 +60,7 @@ try {
         throw "실행 중인 앨범 프로그램을 먼저 닫아 주세요: $(($running | ForEach-Object { Split-Path $_.Path -Leaf }) -join ', ')"
     }
 
-    Step '1/4 빌드용 가상환경 만들기 (.build-venv)'
+    Step '1/5 빌드용 가상환경 만들기 (.build-venv)'
     if (Test-Path $Venv) { Remove-Item -Recurse -Force $Venv }
     if ($Python) {
         Invoke-Checked $Python @('-m', 'venv', $Venv)
@@ -70,7 +71,7 @@ try {
     }
     Invoke-Checked $VenvPy @('-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', '-r', 'requirements-build.txt')
 
-    Step "2/4 빌드 (PyInstaller) → $KoName.exe, $EnName.exe"
+    Step "2/5 빌드 (PyInstaller) → $KoName.exe, $EnName.exe"
     Invoke-Checked $VenvPy @('-m', 'PyInstaller', '--noconfirm', '--clean', '--log-level', 'WARN',
         '--windowed', '--onedir', '--name', $BuildName, '--contents-directory', 'app',
         '--icon', (Join-Path $PSScriptRoot 'packaging\app.ico'),
@@ -80,7 +81,7 @@ try {
     foreach ($exe in $Exes) { Copy-Item -Force $BuiltExe (Join-Path $BuildOut $exe.Name) }
     Remove-Item $BuiltExe
 
-    Step '3/4 동작 확인 (exe 2개 각각, Python 없이, 한글·공백 경로에서 JPEG+HEIC+GIF로 앨범 만들기)'
+    Step '3/5 동작 확인 (exe 2개 각각, Python 없이, 한글·공백 경로에서 JPEG+HEIC+GIF로 앨범 만들기)'
     $Work = Join-Path $env:TEMP "a4lbum 검사 $(Get-Random)"
     $AppCopy = Join-Path $Work '앨범 프로그램'
     $Photos = Join-Path $Work '사진 모음'
@@ -109,7 +110,7 @@ try {
     }
     Remove-Item -Recurse -Force $Work
 
-    Step '4/4 저장소 최상위의 exe 2개와 app\ 교체'
+    Step '4/5 저장소 최상위의 exe 2개와 app\ 교체'
     $RootApp = Join-Path $PSScriptRoot 'app'
     if (Test-Path $RootApp) { Remove-Item -Recurse -Force $RootApp }
     Copy-Item -Recurse (Join-Path $BuildOut 'app') $RootApp
@@ -119,7 +120,12 @@ try {
     }
     foreach ($exe in $Exes) { Copy-Item -Force (Join-Path $BuildOut $exe.Name) (Join-Path $PSScriptRoot $exe.Name) }
     $mb = '{0:N1}' -f ((Get-ChildItem $RootApp -Recurse -File | Measure-Object Length -Sum).Sum / 1MB)
-    Write-Host "`n완료: $KoName.exe + $EnName.exe + app\ ($mb MB). 함께 커밋하세요." -ForegroundColor Green
+
+    Step '5/5 예시 PDF 다시 만들기 (examples\photos_album.pdf)'
+    & (Join-Path $PSScriptRoot 'make_example.ps1') -Exe (Join-Path $PSScriptRoot "$KoName.exe")
+    if ($LASTEXITCODE -ne 0) { throw '예시 PDF를 만들지 못했습니다. exe와 app\은 이미 교체되었습니다.' }
+
+    Write-Host "`n완료: $KoName.exe + $EnName.exe + app\ ($mb MB) + 예시 PDF. 함께 커밋하세요." -ForegroundColor Green
     exit 0
 } catch {
     Write-Host "`n오류: $_" -ForegroundColor Red

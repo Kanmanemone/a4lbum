@@ -1,5 +1,8 @@
 # a4lbum — A4 사진 앨범 만들기
 
+- [변환 전 사진 폴더 (예시)](examples/photos/)
+- [변환 후 사진 앨범 (예시)](examples/photos_album.pdf)
+
 사진 폴더를 고르면 **A4 한 장에 사진 두 장(위·아래)** 을 배치한 PDF를 만듭니다. 각 사진의 오른쪽 위 모서리에는 **메모 라벨**로 설명이 붙습니다. 인쇄해서 A4 클리어 파일에 끼우면 앨범이 됩니다.
 
 설명은 사진 파일 이름에서 가져오고, 사진은 자르지 않고 원본 화질 그대로 들어갑니다. 아이폰 사진(HEIC)을 비롯해 웬만한 이미지 형식은 알아서 변환해 넣으며, 원본 사진 파일은 건드리지 않습니다.
@@ -22,6 +25,7 @@
 - 앨범 순서는 창의 "사진 순서" 목록에서 정합니다(아래 3번).
 - 설명은 60자 이내가 좋습니다. 길면 라벨 글씨가 작아지다가 "…"로 줄어듭니다.
 - 사진이 홀수 장이면 마지막 페이지의 아래 칸은 비워 둡니다.
+- 예시: [examples/photos/](examples/photos/)의 사진 5장으로 만든 앨범이 [examples/photos_album.pdf](examples/photos_album.pdf)입니다.
 
 ### 3. 앨범 만들기
 
@@ -63,5 +67,5 @@ python -m pytest                             # 테스트
 
 - Claude Code에서는 `/album C:\사진\2026_여행`으로 실행할 수 있습니다.
 - 명령줄 실행과 `/album`은 항상 이름 순이고 맨 앞 `숫자_`를 뺍니다. 순서 목록과 "숫자_" 체크박스는 창에만 있습니다.
-- 코드를 바꾼 뒤에는 `powershell -ExecutionPolicy Bypass -File build_portable.ps1`로 `앨범 만들기 (한국어).exe`, `Photo Album Maker (English).exe`, `app\`을 다시 만들고 함께 커밋합니다. 두 exe는 같은 빌드의 복사본이고, exe 이름에 `(English)`가 있으면 영어로 동작합니다. 빌드 중 두 exe 모두 Python 없이 실제 앨범을 만들어 보는 검사를 하고, 실패하면 기존 exe를 바꾸지 않습니다.
+- 코드를 바꾼 뒤에는 `powershell -ExecutionPolicy Bypass -File build_portable.ps1`로 `앨범 만들기 (한국어).exe`, `Photo Album Maker (English).exe`, `app\`을 다시 만들고 함께 커밋합니다. 두 exe는 같은 빌드의 복사본이고, exe 이름에 `(English)`가 있으면 영어로 동작합니다. 빌드 중 두 exe 모두 Python 없이 실제 앨범을 만들어 보는 검사를 하고, 실패하면 기존 exe를 바꾸지 않습니다. 빌드 마지막에 `make_example.ps1`이 새 exe로 `examples/photos_album.pdf`를 다시 만듭니다(따로 실행해도 됩니다).
 - 설계 문서: [specs/](specs/)

@@ -24,7 +24,8 @@ powershell -ExecutionPolicy Bypass -File build_portable.ps1 [-Python <python.exe
    4. 둘 다 exit 0이고 PDF가 있어야 한다. 로그에는 한국어 exe면 `완료: 사진 3장 → 2페이지`, 영어 exe면 `Done: 3 photos → 2 pages`가 있어야 통과다.
    5. 실패하면 로그를 보여 주고 exit 1로 끝나며 저장소의 exe와 `app\`은 바꾸지 않는다.
 4. 저장소 최상위의 `app\`을 지우고 새 결과로 바꾼다. 예전 이름 `앨범 만들기.exe`가 있으면 지우고, 두 exe를 덮어쓴다.
-5. `완료: 앨범 만들기 (한국어).exe + Photo Album Maker (English).exe + app\ (<크기> MB). 함께 커밋하세요.`를 출력한다.
+5. `make_example.ps1`을 실행해 새 한국어 exe의 `--smoke-test`로 `examples\photos\`(사진 5장)에서 `examples\photos_album.pdf`를 다시 만든다(이름 순, 맨 앞 "숫자_"를 뺌). 실패하면 exit 1이지만 exe와 `app\`은 이미 교체된 상태다. `make_example.ps1`은 따로 실행해도 된다.
+6. `완료: 앨범 만들기 (한국어).exe + Photo Album Maker (English).exe + app\ (<크기> MB) + 예시 PDF. 함께 커밋하세요.`를 출력한다.
 
 exe 이름은 스크립트의 `$KoName`·`$EnName`과 `album_app.title()`이 같아야 한다(`tests/test_english.py`가 확인).
 
@@ -34,6 +35,8 @@ exe 이름은 스크립트의 `$KoName`·`$EnName`과 `album_app.title()`이 같
 앨범 만들기 (한국어).exe          # 한국어 사용자가 더블클릭
 Photo Album Maker (English).exe   # 영어 사용자가 더블클릭
 app/                              # Python 런타임·라이브러리 (/app/** -text, !/app/** 로 바이트 그대로 전부 커밋)
+examples/photos/                  # 예시 사진 5장 (그려서 만든 풍경, EXIF 촬영 날짜 포함)
+examples/photos_album.pdf         # 빌드마다 make_example.ps1이 다시 만드는 예시 앨범 (.gitignore 예외)
 ```
 
 ## 종료 코드
