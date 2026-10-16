@@ -11,27 +11,6 @@ import album_app
 import make_album
 
 
-@pytest.fixture(scope="session")
-def tk_root():
-    # One Tk interpreter per session: creating many in a row is flaky on Windows.
-    try:
-        root = tk.Tk()
-    except tk.TclError as exc:
-        pytest.skip(f"no display for Tk: {exc}")
-    root.withdraw()
-    yield root
-    root.destroy()
-
-
-@pytest.fixture
-def root(tk_root):
-    window = tk.Toplevel(tk_root)
-    window.withdraw()
-    yield window
-    if window.winfo_exists():
-        window.destroy()
-
-
 def wait_until_idle(app, timeout=30):
     deadline = time.monotonic() + timeout
     while app.busy:
@@ -166,12 +145,6 @@ def test_smoke_test_mode_reports_failure(tmp_path):
 
 
 # --- 003: photo order list -------------------------------------------------
-
-
-@pytest.fixture
-def four_photos(make_jpeg):
-    for name in ["A.jpg", "B.jpg", "C.jpg", "D.jpg"]:
-        make_jpeg(name)
 
 
 def order(app):
@@ -377,3 +350,4 @@ def test_strip_number_checkbox_explains_itself_on_hover(root):
     assert "283_벚꽃 축제 모습.jpg  →  벚꽃 축제 모습" in label.cget("text")
     tip.hide()
     assert tip.window is None
+

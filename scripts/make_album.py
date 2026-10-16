@@ -86,6 +86,22 @@ ORIENTATION_TAG = 0x0112
 EXIF_IFD = 0x8769
 DATE_TAKEN_TAGS = (0x9003, 0x9004)  # DateTimeOriginal, DateTimeDigitized
 
+# --- Language ------------------------------------------------------------------
+
+# Messages are Korean; the English app (album_app.py run as "... (English).exe")
+# sets this to "en" once at start-up. The CLI always stays Korean.
+LANG = "ko"
+
+
+def tr(ko, en):
+    """The message for the current language."""
+    return en if LANG == "en" else ko
+
+
+def _count(n, word):
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
 # --- Data model ----------------------------------------------------------------
 
 
@@ -187,7 +203,8 @@ class AlbumWarning:
         return self.code == "CONVERTED"
 
     def __str__(self):
-        return f"{'알림' if self.is_notice else '경고'}: {self.file_name} — {self.message}"
+        kind = tr("알림", "Note") if self.is_notice else tr("경고", "Warning")
+        return f"{kind}: {self.file_name} — {self.message}"
 
 
 class AlbumError(Exception):
@@ -256,13 +273,16 @@ def _convert(src, work_dir):
         img = ImageOps.exif_transpose(img)
         stem = Path(work_dir) / str(len(os.listdir(work_dir)))
         if _has_alpha(img) or img.getcolors(256) is not None:
-            dst, target = stem.with_suffix(".png"), "PNG(무손실)"
+            dst, target = stem.with_suffix(".png"), tr("PNG(무손실)", "PNG (lossless)")
             img.convert("RGBA" if _has_alpha(img) else "RGB").save(dst, "PNG")
         else:
-            dst, target = stem.with_suffix(".jpg"), f"JPEG(품질 {CONVERT_JPEG_QUALITY})"
+            dst, target = stem.with_suffix(".jpg"), tr(f"JPEG(품질 {CONVERT_JPEG_QUALITY})",
+                                                       f"JPEG (quality {CONVERT_JPEG_QUALITY})")
             img.convert("RGB").save(dst, "JPEG", quality=CONVERT_JPEG_QUALITY, subsampling=0)
-    note = " 여러 장면이 든 파일이라 첫 장면만 넣었습니다." if multi else ""
-    return dst, f"{name}를 {target}로 변환해 넣었습니다.{note} 원본 파일은 그대로입니다."
+    note = tr(" 여러 장면이 든 파일이라 첫 장면만 넣었습니다.",
+              " The file holds several frames; only the first was added.") if multi else ""
+    return dst, tr(f"{name}를 {target}로 변환해 넣었습니다.{note} 원본 파일은 그대로입니다.",
+                   f"Converted {name} to {target}.{note} The original file is unchanged.")
 
 
 def _photo_entries(folder):
@@ -272,10 +292,13 @@ def _photo_entries(folder):
             continue
         ext = os.path.splitext(entry.name)[1].casefold()
         if ext in RAW_EXTS or (ext in HEIF_EXTS and not HEIF_AVAILABLE):
-            hint = ("카메라 RAW 파일은 JPEG로 내보낸 뒤 넣어 주세요." if ext in RAW_EXTS
-                    else "pillow-heif를 설치하면 넣을 수 있습니다(pip install -r requirements.txt).")
+            hint = (tr("카메라 RAW 파일은 JPEG로 내보낸 뒤 넣어 주세요.",
+                       "Export camera RAW files to JPEG first.") if ext in RAW_EXTS
+                    else tr("pillow-heif를 설치하면 넣을 수 있습니다(pip install -r requirements.txt).",
+                            "Install pillow-heif to include it (pip install -r requirements.txt)."))
             yield None, AlbumWarning("UNSUPPORTED_FORMAT", entry.name,
-                                     f"지원하지 않는 사진 형식이라 건너뛰었습니다. {hint}")
+                                     tr(f"지원하지 않는 사진 형식이라 건너뛰었습니다. {hint}",
+                                        f"Skipped: unsupported photo format. {hint}"))
         elif ext in PHOTO_EXTS:
             yield entry, None
 
@@ -328,7 +351,9 @@ def scan_folder(folder, work_dir, strip_number=True):
                 warnings.append(AlbumWarning("CONVERTED", entry.name, message))
                 kind, size, orientation = _read_photo(path)
         except Exception:
-            warnings.append(AlbumWarning("UNREADABLE", entry.name, "사진 파일을 열 수 없어 건너뛰었습니다."))
+            warnings.append(AlbumWarning("UNREADABLE", entry.name,
+                                         tr("사진 파일을 열 수 없어 건너뛰었습니다.",
+                                            "Skipped: the photo file cannot be opened.")))
             continue
         display = (size[1], size[0]) if orientation >= 5 else size
         items.append(PhotoItem(path, entry.name, extract_caption(entry.name, strip_number), natural_key(entry.name),
@@ -439,22 +464,29 @@ def page_warnings(pages, fonts):
                 continue
             item, name = slot.item, slot.item.file_name
             if not item.caption:
-                warnings.append(AlbumWarning("EMPTY_CAPTION", name, "설명이 비어 있어 메모 라벨 없이 넣었습니다."))
+                warnings.append(AlbumWarning("EMPTY_CAPTION", name,
+                                             tr("설명이 비어 있어 메모 라벨 없이 넣었습니다.",
+                                                "The caption is empty, so the photo has no note label.")))
             elif len(item.caption) > MAX_CAPTION_CHARS:
                 warnings.append(AlbumWarning("LONG_CAPTION", name,
-                                        f"설명이 {len(item.caption)}자로 권장 길이({MAX_CAPTION_CHARS}자)를 넘습니다."))
+                                        tr(f"설명이 {len(item.caption)}자로 권장 길이({MAX_CAPTION_CHARS}자)를 넘습니다.",
+                                           f"The caption has {len(item.caption)} characters, more than the "
+                                           f"recommended {MAX_CAPTION_CHARS}.")))
             if slot.label and slot.label.truncated:
                 warnings.append(AlbumWarning("CAPTION_TRUNCATED", name,
-                                        "설명이 메모 라벨에 다 들어가지 않아 뒷부분을 '…'로 줄였습니다."))
+                                        tr("설명이 메모 라벨에 다 들어가지 않아 뒷부분을 '…'로 줄였습니다.",
+                                           "The caption did not fit in the note label, so its end became '…'.")))
             missing = fonts.missing(item.caption)
             if missing:
                 warnings.append(AlbumWarning("MISSING_GLYPH", name,
-                                        f"글꼴에 없는 글자({''.join(missing)})는 빼고 표시했습니다."))
+                                        tr(f"글꼴에 없는 글자({''.join(missing)})는 빼고 표시했습니다.",
+                                           f"Characters missing from the font ({''.join(missing)}) were left out.")))
             dpi = min(item.display_size[0] / (slot.photo_rect.w / 25.4),
                       item.display_size[1] / (slot.photo_rect.h / 25.4))
             if dpi < LOW_DPI:
                 warnings.append(AlbumWarning("LOW_RESOLUTION", name,
-                                        f"해상도가 낮아(약 {dpi:.0f}dpi) 인쇄하면 흐릿할 수 있습니다."))
+                                        tr(f"해상도가 낮아(약 {dpi:.0f}dpi) 인쇄하면 흐릿할 수 있습니다.",
+                                           f"Low resolution (about {dpi:.0f} dpi); it may look blurry in print.")))
     return warnings
 
 
@@ -471,7 +503,8 @@ class Fonts:
     def __init__(self, primary):
         primary = Path(primary)
         if not primary.is_file():
-            raise AlbumError(f"글꼴 파일을 찾을 수 없습니다: {primary} (--font로 지정할 수 있습니다)")
+            raise AlbumError(tr(f"글꼴 파일을 찾을 수 없습니다: {primary} (--font로 지정할 수 있습니다)",
+                                f"Font file not found: {primary} (choose one with --font)"))
         system_fonts = default_font_path().parent
         fallbacks = [system_fonts / "seguiemj.ttf", system_fonts / "seguisym.ttf"]
         self.faces = []
@@ -483,7 +516,8 @@ class Fonts:
                 font = TTFont(name, str(path))
             except Exception as exc:
                 if i == 0:
-                    raise AlbumError(f"글꼴 파일을 읽을 수 없습니다: {path} ({exc})") from exc
+                    raise AlbumError(tr(f"글꼴 파일을 읽을 수 없습니다: {path} ({exc})",
+                                        f"Cannot read the font file: {path} ({exc})")) from exc
                 continue
             pdfmetrics.registerFont(font)
             self.faces.append((name, font.face.charToGlyph))
@@ -628,7 +662,9 @@ def report_lines(out, photo_count, page_count, warnings):
     """The result lines shown to the user (CLI stdout and the app window)."""
     warning_count = sum(not w.is_notice for w in warnings)
     return [*map(str, warnings),
-            f"완료: 사진 {photo_count}장 → {page_count}페이지, 경고 {warning_count}건",
+            tr(f"완료: 사진 {photo_count}장 → {page_count}페이지, 경고 {warning_count}건",
+               f"Done: {_count(photo_count, 'photo')} → {_count(page_count, 'page')}, "
+               f"{_count(warning_count, 'warning')}"),
             f"PDF: {out}"]
 
 
@@ -640,7 +676,7 @@ def build_album(photo_dir, output=None, font=None, order=None, strip_number=True
     """
     folder = Path(photo_dir)
     if not folder.is_dir():
-        raise AlbumError(f"사진 폴더를 찾을 수 없습니다: {folder}")
+        raise AlbumError(tr(f"사진 폴더를 찾을 수 없습니다: {folder}", f"Photo folder not found: {folder}"))
     folder = Path(os.path.abspath(folder))
     out = Path(os.path.abspath(output)) if output else default_output_path(folder)
 
@@ -652,7 +688,7 @@ def build_album(photo_dir, output=None, font=None, order=None, strip_number=True
             items.sort(key=lambda item: (0, rank[item.file_name]) if item.file_name in rank
                        else (1, item.sort_key))
         if not items:
-            raise AlbumError(f"넣을 사진이 없습니다: {folder}", warnings)
+            raise AlbumError(tr(f"넣을 사진이 없습니다: {folder}", f"No photos to add: {folder}"), warnings)
         fonts = Fonts(font or default_font_path())
         pages = layout_pages(items, fonts.measure)
         warnings += page_warnings(pages, fonts)
@@ -660,9 +696,12 @@ def build_album(photo_dir, output=None, font=None, order=None, strip_number=True
         try:
             render_pdf(pages, out, fonts)
         except PermissionError as exc:
-            raise AlbumError(f"PDF를 저장할 수 없습니다: {out} — PDF 뷰어에서 열려 있다면 닫고 다시 실행해 주세요.") from exc
+            raise AlbumError(tr(f"PDF를 저장할 수 없습니다: {out} — PDF 뷰어에서 열려 있다면 닫고 다시 실행해 주세요.",
+                                f"Cannot save the PDF: {out} — if it is open in a PDF viewer, close it "
+                                f"and try again.")) from exc
         except OSError as exc:
-            raise AlbumError(f"PDF를 저장할 수 없습니다: {out} ({exc})") from exc
+            raise AlbumError(tr(f"PDF를 저장할 수 없습니다: {out} ({exc})",
+                                f"Cannot save the PDF: {out} ({exc})")) from exc
     return out, len(items), len(pages), warnings
 
 

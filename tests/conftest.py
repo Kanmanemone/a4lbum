@@ -1,6 +1,7 @@
-"""Fixtures that build throwaway test photos with Pillow."""
+"""Fixtures: throwaway test photos built with Pillow, and hidden Tk windows."""
 
 import hashlib
+import tkinter as tk
 
 import pytest
 from PIL import Image
@@ -54,3 +55,30 @@ def make_broken(photo_dir):
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.fixture(scope="session")
+def tk_root():
+    # One Tk interpreter per session: creating many in a row is flaky on Windows.
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        pytest.skip(f"no display for Tk: {exc}")
+    root.withdraw()
+    yield root
+    root.destroy()
+
+
+@pytest.fixture
+def root(tk_root):
+    window = tk.Toplevel(tk_root)
+    window.withdraw()
+    yield window
+    if window.winfo_exists():
+        window.destroy()
+
+
+@pytest.fixture
+def four_photos(make_jpeg):
+    for name in ["A.jpg", "B.jpg", "C.jpg", "D.jpg"]:
+        make_jpeg(name)

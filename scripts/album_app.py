@@ -4,11 +4,13 @@ Pick a photo folder, arrange the photo order in the list (sort by name,
 created or modified date, or move photos one by one), and press "앨범 만들기"
 to get the same kind of PDF as `make_album.py`, in the listed order. A
 checkbox decides whether a leading "숫자_" is dropped from the captions. This
-is the entry point of the portable 앨범 만들기.exe (see build_portable.ps1).
+is the entry point of the portable "앨범 만들기 (한국어).exe" and
+"Photo Album Maker (English).exe" (see build_portable.ps1): the two are the
+same program, and an exe name containing "(English)" switches it to English.
 
 Usage:
-    python scripts/album_app.py [PHOTO_DIR]
-    python scripts/album_app.py --smoke-test PHOTO_DIR OUTPUT_PDF LOG_FILE   (build check)
+    python scripts/album_app.py [--english] [PHOTO_DIR]
+    python scripts/album_app.py [--english] --smoke-test PHOTO_DIR OUTPUT_PDF LOG_FILE   (build check)
 """
 
 from __future__ import annotations
@@ -24,8 +26,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import make_album
+from make_album import tr
 
-TITLE = "A4 사진 앨범 만들기"
 SORT_KEYS = ("name", "created", "modified", "taken")
 CUSTOM = "custom"  # after the user moves a photo by hand; not selectable
 # Marks a 촬영한 날짜 that is really the modified date (no EXIF). Plain U+26A0:
@@ -34,28 +36,46 @@ NO_TAKEN_MARK = "⚠"
 MOVES = ("up", "down", "top", "bottom")
 
 
+def is_english_exe(executable):
+    """True for the English copy of the exe, e.g. "Photo Album Maker (English).exe"."""
+    return "(english)" in Path(executable).stem.casefold()
+
+
+def title():
+    """Window title: the exe name without ".exe" (build_portable.ps1 uses the same names)."""
+    return tr("앨범 만들기 (한국어)", "Photo Album Maker (English)")
+
+
 def sort_label(key):
     """Text shown in the sort box for a sort key (or CUSTOM)."""
-    return {"name": "이름 순 정렬",
-            "created": "만든 날짜 순 정렬",
-            "modified": "수정한 날짜 순 정렬",
-            "taken": "촬영한 날짜 순 정렬",
-            CUSTOM: "커스텀"}[key]
+    return {"name": tr("이름 순 정렬", "By name"),
+            "created": tr("만든 날짜 순 정렬", "By date created"),
+            "modified": tr("수정한 날짜 순 정렬", "By date modified"),
+            "taken": tr("촬영한 날짜 순 정렬", "By date taken"),
+            CUSTOM: tr("커스텀", "Custom")}[key]
 
 
 def move_label(where):
-    return {"up": "▲", "down": "▼", "top": "맨 위로", "bottom": "맨 아래로"}[where]
+    return {"up": "▲", "down": "▼", "top": tr("맨 위로", "To top"),
+            "bottom": tr("맨 아래로", "To bottom")}[where]
 
 
 def strip_number_help():
     """Hover text of the "숫자_" checkbox (the README leaves this to the window)."""
-    return ("체크하면 파일 이름 맨 앞의 \"숫자_\"를 빼고 메모 라벨에 넣습니다.\n"
-            "\n"
-            "  283_벚꽃 축제 모습.jpg  →  벚꽃 축제 모습\n"
-            "  3_엄마_아빠.jpg  →  엄마_아빠  (맨 앞 \"숫자_\"만 뺌)\n"
-            "  2026여행.jpg  →  2026여행  (숫자 뒤에 \"_\"가 없으면 그대로)\n"
-            "\n"
-            "체크하지 않으면 확장자만 뺀 파일 이름이 그대로 들어갑니다.")
+    return tr("체크하면 파일 이름 맨 앞의 \"숫자_\"를 빼고 메모 라벨에 넣습니다.\n"
+              "\n"
+              "  283_벚꽃 축제 모습.jpg  →  벚꽃 축제 모습\n"
+              "  3_엄마_아빠.jpg  →  엄마_아빠  (맨 앞 \"숫자_\"만 뺌)\n"
+              "  2026여행.jpg  →  2026여행  (숫자 뒤에 \"_\"가 없으면 그대로)\n"
+              "\n"
+              "체크하지 않으면 확장자만 뺀 파일 이름이 그대로 들어갑니다.",
+              "When ticked, a leading \"number_\" is removed from the file name in the note label.\n"
+              "\n"
+              "  283_Cherry blossoms.jpg  →  Cherry blossoms\n"
+              "  3_Mom_and_Dad.jpg  →  Mom_and_Dad  (only the leading \"number_\")\n"
+              "  2026trip.jpg  →  2026trip  (unchanged without \"_\" after the number)\n"
+              "\n"
+              "When not ticked, the label is the file name without its extension.")
 
 
 class Tooltip:
@@ -114,9 +134,10 @@ def _run(photo_dir, output, order=None, strip_number=True):
         out, photos, pages, warnings = make_album.build_album(
             photo_dir, output or None, order=order, strip_number=strip_number)
     except make_album.AlbumError as exc:
-        return [*map(str, exc.warnings), f"오류: {exc}"], None
+        return [*map(str, exc.warnings), tr(f"오류: {exc}", f"Error: {exc}")], None
     except Exception as exc:  # keep the window alive whatever happens
-        return [f"오류: 예상하지 못한 문제가 생겼습니다: {exc}"], None
+        return [tr(f"오류: 예상하지 못한 문제가 생겼습니다: {exc}",
+                   f"Error: something unexpected went wrong: {exc}")], None
     return make_album.report_lines(out, photos, pages, warnings), out
 
 
@@ -142,7 +163,7 @@ class PhotoList(ttk.Frame):
         self.inner.bind("<Configure>",
                         lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(window, width=e.width))
-        self.empty = ttk.Label(self.inner, text="사진이 없습니다.")
+        self.empty = ttk.Label(self.inner, text=tr("사진이 없습니다.", "No photos."))
         # The wheel scrolls the list only while the pointer is over it.
         self.bind("<Enter>", lambda _e: self.bind_all("<MouseWheel>", self._on_wheel))
         self.bind("<Leave>", lambda _e: self.unbind_all("<MouseWheel>"))
@@ -199,7 +220,7 @@ class AlbumApp:
         self.dated_by = "name"  # sort key whose date the list shows
         self._results = queue.Queue()
 
-        root.title(TITLE)
+        root.title(title())
         # Sizes are in screen pixels, so scale them with the display (tk scaling is 1.33 at 100%).
         zoom = float(root.tk.call("tk", "scaling")) / (96 / 72)
         # Keep the window on screen at 150%+ display scaling.
@@ -216,49 +237,53 @@ class AlbumApp:
 
         self.photo_dir = tk.StringVar()
         self.output = tk.StringVar()
-        ttk.Label(frame, text="사진 폴더").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text=tr("사진 폴더", "Photo folder")).grid(row=0, column=0, sticky="w", pady=4)
         ttk.Entry(frame, textvariable=self.photo_dir).grid(row=0, column=1, sticky="ew", padx=6)
-        self.folder_button = ttk.Button(frame, text="찾아보기…", command=self.choose_folder)
+        self.folder_button = ttk.Button(frame, text=tr("찾아보기…", "Browse…"), command=self.choose_folder)
         self.folder_button.grid(row=0, column=2)
-        ttk.Label(frame, text="저장할 PDF").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Label(frame, text=tr("저장할 PDF", "Save PDF as")).grid(row=1, column=0, sticky="w", pady=4)
         output_entry = ttk.Entry(frame, textvariable=self.output)
         output_entry.grid(row=1, column=1, sticky="ew", padx=6)
         output_entry.bind("<Key>", lambda _event: setattr(self, "output_custom", True))
-        self.output_button = ttk.Button(frame, text="찾아보기…", command=self.choose_output)
+        self.output_button = ttk.Button(frame, text=tr("찾아보기…", "Browse…"), command=self.choose_output)
         self.output_button.grid(row=1, column=2)
 
-        order_frame = ttk.LabelFrame(frame, text="사진 순서", padding=4)
+        order_frame = ttk.LabelFrame(frame, text=tr("사진 순서", "Photo order"), padding=4)
         order_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(6, 0))
         bar = ttk.Frame(order_frame)
         bar.pack(fill="x", pady=(0, 4))
         self.sort_mode = tk.StringVar(value=sort_label("name"))  # the shown text
         self.reverse = tk.BooleanVar(value=False)
-        ttk.Label(bar, text="정렬").pack(side="left")
+        ttk.Label(bar, text=tr("정렬", "Sort")).pack(side="left")
         self.sort_box = ttk.Combobox(bar, textvariable=self.sort_mode, values=[sort_label(k) for k in SORT_KEYS],
                                      state="readonly", width=18)
         self.sort_box.pack(side="left", padx=6)
         self.sort_box.bind("<<ComboboxSelected>>", self.on_sort_selected)
-        self.reverse_check = ttk.Checkbutton(bar, text="역순(내림차순)으로 정렬", variable=self.reverse,
+        self.reverse_check = ttk.Checkbutton(bar, text=tr("역순(내림차순)으로 정렬", "Reverse (descending)"),
+                                             variable=self.reverse,
                                              command=self.resort)
         self.reverse_check.pack(side="left", padx=6)
-        self.no_taken_note = ttk.Label(bar, text=f"{NO_TAKEN_MARK} 촬영 정보가 없어 수정한 날짜로 대신함")
+        self.no_taken_note = ttk.Label(bar, text=f"{NO_TAKEN_MARK} " + tr(
+            "촬영 정보가 없어 수정한 날짜로 대신함", "No date taken; date modified used instead"))
         self.photo_list = PhotoList(order_frame, self.move)
         self.photo_list.pack(fill="both", expand=True)
 
         self.strip_number = tk.BooleanVar(value=False)
-        strip_check = ttk.Checkbutton(frame, text='파일 이름 앞 "숫자_" 빼고 메모 라벨 넣기',
+        strip_check = ttk.Checkbutton(frame, text=tr('파일 이름 앞 "숫자_" 빼고 메모 라벨 넣기',
+                                                     'Drop a leading "number_" from file names in note labels'),
                                       variable=self.strip_number)
         strip_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
         self.strip_tip = Tooltip(strip_check, strip_number_help())
 
         buttons = ttk.Frame(frame)
         buttons.grid(row=4, column=0, columnspan=3, pady=10)
-        self.build_button = ttk.Button(buttons, text="앨범 만들기", command=self.start)
+        self.build_button = ttk.Button(buttons, text=tr("앨범 만들기", "Make album"), command=self.start)
         self.build_button.pack(side="left", padx=4)
-        self.open_button = ttk.Button(buttons, text="PDF 열기", command=self.open_pdf, state="disabled")
+        self.open_button = ttk.Button(buttons, text=tr("PDF 열기", "Open PDF"), command=self.open_pdf,
+                                      state="disabled")
         self.open_button.pack(side="left", padx=4)
 
-        log_frame = ttk.LabelFrame(frame, text="결과", padding=4)
+        log_frame = ttk.LabelFrame(frame, text=tr("결과", "Result"), padding=4)
         log_frame.grid(row=5, column=0, columnspan=3, sticky="nsew")
         self.log = tk.Text(log_frame, height=6, wrap="word", state="disabled", font="TkDefaultFont")
         scroll = ttk.Scrollbar(log_frame, command=self.log.yview)
@@ -364,7 +389,7 @@ class AlbumApp:
         self.output.set(path)
 
     def choose_folder(self):
-        folder = filedialog.askdirectory(parent=self.root, title="사진 폴더 고르기",
+        folder = filedialog.askdirectory(parent=self.root, title=tr("사진 폴더 고르기", "Choose a photo folder"),
                                          initialdir=self.photo_dir.get() or None)
         if folder:
             self.photo_dir.set(os.path.normpath(folder))
@@ -372,7 +397,7 @@ class AlbumApp:
     def choose_output(self):
         current = Path(self.output.get()) if self.output.get() else None
         path = filedialog.asksaveasfilename(
-            parent=self.root, title="저장할 PDF", defaultextension=".pdf",
+            parent=self.root, title=tr("저장할 PDF", "Save PDF as"), defaultextension=".pdf",
             filetypes=[("PDF", "*.pdf")],
             initialdir=current.parent if current else None,
             initialfile=current.name if current else "album.pdf")
@@ -392,17 +417,17 @@ class AlbumApp:
         state = "disabled" if busy else "normal"
         for button in (self.build_button, self.folder_button, self.output_button):
             button.configure(state=state)
-        self.build_button.configure(text="만드는 중…" if busy else "앨범 만들기")
+        self.build_button.configure(text=tr("만드는 중…", "Making…") if busy else tr("앨범 만들기", "Make album"))
         self.open_button.configure(state="normal" if self.last_pdf and not busy else "disabled")
 
     def start(self):
         folder = self.photo_dir.get().strip()
         if not folder:
-            self._show(["사진 폴더를 먼저 골라 주세요."])
+            self._show([tr("사진 폴더를 먼저 골라 주세요.", "Please choose a photo folder first.")])
             return
         self.last_pdf = None
         self._set_busy(True)
-        self._show(["만드는 중…"])
+        self._show([tr("만드는 중…", "Making…")])
         output = self.output.get().strip()
         # Snapshot the list and checkbox now; changes made while building wait for the next run.
         order = [p.name for p in self.photos]
@@ -427,7 +452,9 @@ class AlbumApp:
 
     def on_close(self):
         if self.busy:
-            messagebox.showinfo(TITLE, "앨범을 만드는 중입니다. 끝난 뒤 닫아 주세요.", parent=self.root)
+            messagebox.showinfo(title(), tr("앨범을 만드는 중입니다. 끝난 뒤 닫아 주세요.",
+                                            "The album is still being made. Please close the window "
+                                            "after it is done."), parent=self.root)
             return
         self.root.destroy()
 
@@ -440,6 +467,9 @@ def _smoke_test(photo_dir, output, log_file):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    english = "--english" in argv or (getattr(sys, "frozen", False) and is_english_exe(sys.executable))
+    make_album.LANG = "en" if english else "ko"
+    argv = [a for a in argv if a != "--english"]
     if argv[:1] == ["--smoke-test"]:
         return _smoke_test(*argv[1:4])
     if sys.platform == "win32":
