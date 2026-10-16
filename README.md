@@ -1,71 +1,73 @@
-# a4lbum — A4 사진 앨범 만들기
+# a4lbum — A4 Photo Album Maker
 
-- [변환 전 사진 폴더 (예시)](examples/photos/)
-- [변환 후 사진 앨범 (예시)](examples/photos_album.pdf)
+**Language:** English | [한국어 (Korean)](README.ko.md)
 
-사진 폴더를 고르면 **A4 한 장에 사진 두 장(위·아래)** 을 배치한 PDF를 만듭니다. 각 사진의 오른쪽 위 모서리에는 **메모 라벨**로 설명이 붙습니다. 인쇄해서 A4 클리어 파일에 끼우면 앨범이 됩니다.
+- [Photo folder before (example)](examples/photos/)
+- [Photo album after (example)](examples/photos_album.pdf)
 
-설명은 사진 파일 이름에서 가져오고, 사진은 자르지 않고 원본 화질 그대로 들어갑니다. 아이폰 사진(HEIC)을 비롯해 웬만한 이미지 형식은 알아서 변환해 넣으며, 원본 사진 파일은 건드리지 않습니다.
+Pick a photo folder and get a PDF with **two photos (top and bottom) on each A4 page**. Each photo gets a **note label** with its caption at the top-right corner. Print it, slip the pages into an A4 clear file, and you have an album.
 
-## 사용법
+Captions come from the photo file names, and photos go in uncropped at their original quality. iPhone photos (HEIC) and most other image formats are converted automatically, and your original photo files are never changed.
 
-따로 설치할 것은 없습니다. (Windows 10/11)
+## How to use
 
-### 1. 내려받기
+Nothing to install. (Windows 10/11)
 
-1. 이 GitHub 페이지의 초록색 **[Code] → Download ZIP** 을 누릅니다.
-2. 받은 zip을 오른쪽 클릭 → **모두 압축 풀기**.
+### 1. Download
 
-> exe 옆의 `app` 폴더는 프로그램의 일부입니다(두 exe가 함께 씁니다). 지우거나 따로 옮기지 마세요.
+1. On this GitHub page, click the green **[Code] → Download ZIP**.
+2. Right-click the zip → **Extract All**.
 
-### 2. 사진 준비
+> The `app` folder next to the exe files is part of the program (both exes use it). Do not delete or move it.
 
-사진을 한 폴더에 모으고, 파일 이름을 메모 라벨에 넣을 설명으로 바꿉니다(확장자는 빠집니다). 예: `벚꽃 축제 모습.jpg` → "벚꽃 축제 모습"
+### 2. Prepare your photos
 
-- 앨범 순서는 창의 "사진 순서" 목록에서 정합니다(아래 3번).
-- 설명은 60자 이내가 좋습니다. 길면 라벨 글씨가 작아지다가 "…"로 줄어듭니다.
-- 사진이 홀수 장이면 마지막 페이지의 아래 칸은 비워 둡니다.
-- 예시: [examples/photos/](examples/photos/)의 사진 5장으로 만든 앨범이 [examples/photos_album.pdf](examples/photos_album.pdf)입니다.
+Put the photos in one folder and rename each file to the caption you want on its note label (the extension is left out). Example: `Cherry blossom festival.jpg` → "Cherry blossom festival"
 
-### 3. 앨범 만들기
+- You set the album order in the "Photo order" list in the window (step 3 below).
+- Captions of up to 60 characters work best. Longer ones get a smaller font and are then cut short with "…".
+- With an odd number of photos, the bottom half of the last page stays empty.
+- Example: the album made from the 5 photos in [examples/photos/](examples/photos/) is [examples/photos_album.pdf](examples/photos_album.pdf).
 
-![앨범 만들기 창: 사진 폴더를 고르면 사진 순서 목록이 뜨고, 정렬하거나 줄마다 버튼으로 옮긴 뒤 [앨범 만들기]를 누른다](docs/app-window.png)
+### 3. Make the album
 
-1. **`앨범 만들기 (한국어).exe`** 를 더블클릭합니다.
-   - 파란 "Windows의 PC 보호" 창이 뜨면 **추가 정보 → 실행**을 누르세요.
-2. "사진 폴더" 옆 **[찾아보기…]** 로 사진 폴더를 고릅니다.
-   - 사진 폴더를 exe 위로 끌어다 놓아도 됩니다.
-3. "사진 순서" 목록에서 앨범에 들어갈 순서를 확인하고 필요하면 바꿉니다. **목록에 보이는 순서 그대로** 위 칸 → 아래 칸 → 다음 페이지로 들어갑니다.
-   - **정렬**: "이름 순 정렬"(기본, 앞 숫자는 크기순 `1_` → `2_` → `10_`), "만든 날짜 순 정렬", "수정한 날짜 순 정렬", "촬영한 날짜 순 정렬". 날짜순은 오래된 것이 위이고, **역순(내림차순)으로 정렬**을 체크하면 거꾸로 됩니다.
-   - 날짜순으로 정렬하면 목록의 각 줄에 그 날짜가 보입니다.
-   - "촬영한 날짜"는 카메라·휴대폰이 사진에 기록한 촬영 시각입니다. 촬영 정보가 없는 사진(스크린샷, 편집 프로그램에서 저장한 그림 등)은 수정한 날짜로 대신하며, 목록에서 그 날짜 앞에 **⚠** 를 붙입니다. ⚠ 가 붙은 사진이 있으면 정렬 줄 오른쪽에 그 뜻이 함께 표시됩니다.
-   - 줄마다 있는 **[▲] [▼]** 로 한 칸씩, **[맨 위로] [맨 아래로]** 로 끝까지 옮길 수 있습니다. 한 번이라도 누르면 정렬 표시가 **"커스텀"** 으로 바뀝니다. 정렬 방식을 다시 고르면 직접 바꾼 순서는 사라집니다.
-4. 필요하면 **파일 이름 앞 "숫자_" 빼고 메모 라벨 넣기** 를 체크합니다. 마우스를 올리면 설명이 뜹니다.
-5. **[앨범 만들기]** 를 누르고, 끝나면 **[PDF 열기]** 로 확인합니다.
+![The album window: pick a photo folder, the photo order list appears, sort it or move photos with the buttons on each row, then press [Make album]](docs/app-window.png)
 
-순서와 체크 상태는 창을 닫으면 저장되지 않습니다.
+1. Double-click **`Photo Album Maker (English).exe`**.
+   - If a blue "Windows protected your PC" box appears, click **More info → Run anyway**.
+2. Next to "Photo folder", click **[Browse…]** and pick your photo folder.
+   - You can also drag the photo folder onto the exe.
+3. Check the order in the "Photo order" list and change it if needed. Photos go into the album **exactly in the listed order**: top, bottom, then the next page.
+   - **Sort**: "By name" (default; leading numbers compare by value, `1_` → `2_` → `10_`), "By date created", "By date modified", "By date taken". Date sorts put the oldest first; tick **Reverse (descending)** to flip the order.
+   - With a date sort, each row shows that date.
+   - "Date taken" is the time the camera or phone recorded in the photo. Photos without it (screenshots, images saved by editing apps, etc.) use their date modified instead and get a **⚠** before the date. When any row has ⚠, its meaning is shown to the right of the sort controls.
+   - Use **[▲] [▼]** on each row to move a photo one step, or **[To top] [To bottom]** to move it all the way. Once you press any of them, the sort shows **"Custom"**. Choosing a sort again discards your manual order.
+4. Tick **Drop a leading "number_" from file names in note labels** if needed. Hover over it to see what it does.
+5. Press **[Make album]**, and when it is done, check it with **[Open PDF]**.
 
-PDF는 사진 폴더 **바로 바깥**에 `<폴더이름>_album.pdf`로 저장됩니다(예: `사진\2026_여행` → `사진\2026_여행_album.pdf`). 다른 곳에 저장하려면 "저장할 PDF" 옆 [찾아보기…]로 바꾸세요.
+The order and checkboxes are not saved when you close the window.
 
-창의 결과 영역에 `경고:`가 보이면 해당 사진에 문제가 있다는 뜻입니다(파일이 깨짐, 설명이 비어 있음, 해상도가 낮음 등). 경고가 있어도 나머지 사진으로 PDF는 만들어집니다.
+The PDF is saved **right outside** the photo folder as `<folder name>_album.pdf` (e.g. `Photos\2026_Trip` → `Photos\2026_Trip_album.pdf`). To save it somewhere else, use [Browse…] next to "Save PDF as".
 
-### 4. 인쇄
+A `Warning:` line in the Result area means something is wrong with that photo (a broken file, an empty caption, low resolution, etc.). The PDF is still made with the other photos.
 
-PDF 뷰어에서 **용지 A4**, **배율 "실제 크기"(100%)** 로 인쇄합니다. 단면·양면 모두 됩니다.
+### 4. Print
 
-## 개발자용
+In your PDF viewer, print on **A4 paper** at **"Actual size" (100%)**. Single- and double-sided both work.
 
-Python 3.10 이상에서 소스로 직접 실행하는 방법입니다. 결과는 exe와 같습니다.
+## For developers
+
+Run from source with Python 3.10 or later. The result is the same as the exe.
 
 ```powershell
-pip install -r requirements-dev.txt          # 실행 + 테스트 의존성
+pip install -r requirements-dev.txt          # runtime + test dependencies
 
-python scripts/album_app.py                  # 창으로 실행 (--english: 영어 창)
-python scripts/make_album.py "C:\사진\2026_여행" [-o 경로.pdf] [--font 글꼴.ttf]   # 명령줄 실행
-python -m pytest                             # 테스트
+python scripts/album_app.py                  # the window (--english: English window)
+python scripts/make_album.py "C:\Photos\2026_Trip" [-o out.pdf] [--font font.ttf]   # command line (Korean output)
+python -m pytest                             # tests
 ```
 
-- Claude Code에서는 `/album C:\사진\2026_여행`으로 실행할 수 있습니다.
-- 명령줄 실행과 `/album`은 항상 이름 순이고 맨 앞 `숫자_`를 뺍니다. 순서 목록과 "숫자_" 체크박스는 창에만 있습니다.
-- 코드를 바꾼 뒤에는 `powershell -ExecutionPolicy Bypass -File build_portable.ps1`로 `앨범 만들기 (한국어).exe`, `Photo Album Maker (English).exe`, `app\`을 다시 만들고 함께 커밋합니다. 두 exe는 같은 빌드의 복사본이고, exe 이름에 `(English)`가 있으면 영어로 동작합니다. 빌드 중 두 exe 모두 Python 없이 실제 앨범을 만들어 보는 검사를 하고, 실패하면 기존 exe를 바꾸지 않습니다. 빌드 마지막에 `make_example.ps1`이 새 exe로 `examples/photos_album.pdf`를 다시 만듭니다(따로 실행해도 됩니다).
-- 설계 문서: [specs/](specs/)
+- In Claude Code, run `/album C:\Photos\2026_Trip`.
+- The command line and `/album` always use name order and drop a leading `number_` from captions. The order list and the "number_" checkbox exist only in the window.
+- After changing the code, run `powershell -ExecutionPolicy Bypass -File build_portable.ps1` to rebuild `앨범 만들기 (한국어).exe`, `Photo Album Maker (English).exe` and `app\`, and commit them together. The two exes are copies of one build; an exe name containing `(English)` makes it run in English. The build checks that both exes make a real album without Python and leaves the existing exes alone if that fails. At the end, `make_example.ps1` remakes `examples/photos_album.pdf` with the new exe (it can also be run on its own).
+- Design documents (Korean): [specs/](specs/)
