@@ -4,6 +4,25 @@ Project-specific instructions for Claude Code in this repository.
 
 (Korean: 이 저장소에서 Claude Code를 위한 프로젝트별 지침.)
 
+## Building the Program
+
+- When asked to build (e.g. "빌드해", "exe 빌드"), run
+  `powershell -ExecutionPolicy Bypass -File build_portable.ps1` from the repo
+  root. It always produces both `앨범 만들기 (한국어).exe` and
+  `Photo Album Maker (English).exe` plus the shared `app\`, smoke-tests
+  both, and finally runs `make_example.ps1` to remake
+  `examples\photos_album.pdf` with the new exe. Close any running exe from
+  this repo first; the script stops if one is running. Do not hand-build with
+  PyInstaller.
+
+  (Korean: "빌드해", "exe 빌드" 같은 요청을 받으면 저장소 루트에서
+  `powershell -ExecutionPolicy Bypass -File build_portable.ps1`을 실행한다. 이
+  스크립트는 항상 `앨범 만들기 (한국어).exe`와 `Photo Album Maker (English).exe`,
+  둘이 함께 쓰는 `app\`을 만들고 두 exe를 모두 검사한 뒤, 마지막에
+`make_example.ps1`로 새 exe를 써서 `examples\photos_album.pdf`를 다시 만든다. 이 저장소의 exe가
+  실행 중이면 먼저 닫는다. 실행 중이면 스크립트가 멈춘다. PyInstaller를 직접
+  돌려 빌드하지 않는다.)
+
 ## Commit Conventions
 
 - Write every commit message as an English conventional-commit subject,
