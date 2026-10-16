@@ -3,7 +3,8 @@
 Each A4 page holds two photos (top and bottom). A sticky-note label hanging off
 the top-right corner of every photo shows its caption, taken from the file
 name: "283_벚꽃 축제 모습.jpg" -> "벚꽃 축제 모습". Photos are ordered by file
-name, comparing leading numbers by value.
+name, comparing leading numbers by value. These are the CLI defaults; the app
+window (album_app.py) passes its own photo order.
 
 JPEG files are embedded byte-for-byte (no resizing or re-compression) and the
 photo folder is only ever read. Other formats (HEIC, WEBP, GIF, BMP, TIFF, AVIF)
@@ -119,6 +120,15 @@ class Rect:
 
 
 PRINTABLE = Rect(MARGIN, MARGIN, PAGE_W - 2 * MARGIN, PAGE_H - 2 * MARGIN)
+
+
+@dataclass(frozen=True)
+class PhotoFile:
+    """A photo file as listed in the app window (dates are epoch seconds)."""
+
+    name: str
+    created: float
+    modified: float
 
 
 @dataclass
@@ -246,9 +256,8 @@ def _convert(src, work_dir):
     return dst, f"{name}를 {target}로 변환해 넣었습니다.{note} 원본 파일은 그대로입니다."
 
 
-def scan_folder(folder, work_dir):
-    """Collect photos in folder; formats PDF cannot hold are converted into work_dir."""
-    items, warnings = [], []
+def _photo_entries(folder):
+    """Yield (entry, None) for each photo to try, or (None, warning) for a skipped one."""
     for entry in os.scandir(folder):
         if not entry.is_file() or _is_hidden(entry):
             continue
@@ -256,10 +265,31 @@ def scan_folder(folder, work_dir):
         if ext in RAW_EXTS or (ext in HEIF_EXTS and not HEIF_AVAILABLE):
             hint = ("카메라 RAW 파일은 JPEG로 내보낸 뒤 넣어 주세요." if ext in RAW_EXTS
                     else "pillow-heif를 설치하면 넣을 수 있습니다(pip install -r requirements.txt).")
-            warnings.append(AlbumWarning("UNSUPPORTED_FORMAT", entry.name,
-                                         f"지원하지 않는 사진 형식이라 건너뛰었습니다. {hint}"))
-            continue
-        if ext not in PHOTO_EXTS:
+            yield None, AlbumWarning("UNSUPPORTED_FORMAT", entry.name,
+                                     f"지원하지 않는 사진 형식이라 건너뛰었습니다. {hint}")
+        elif ext in PHOTO_EXTS:
+            yield entry, None
+
+
+def list_photo_files(folder):
+    """The files the album would try, with their file dates, without opening them."""
+    try:
+        photos = []
+        for entry, _ in _photo_entries(folder):
+            if entry is not None:
+                st = entry.stat()
+                photos.append(PhotoFile(entry.name, getattr(st, "st_birthtime", st.st_ctime), st.st_mtime))
+        return photos
+    except OSError:
+        return []
+
+
+def scan_folder(folder, work_dir):
+    """Collect photos in folder; formats PDF cannot hold are converted into work_dir."""
+    items, warnings = [], []
+    for entry, warning in _photo_entries(folder):
+        if warning:
+            warnings.append(warning)
             continue
         path = Path(entry.path)
         try:
@@ -573,7 +603,12 @@ def report_lines(out, photo_count, page_count, warnings):
             f"PDF: {out}"]
 
 
-def build_album(photo_dir, output=None, font=None):
+def build_album(photo_dir, output=None, font=None, order=None):
+    """Build the album PDF.
+
+    order: file names in the wanted order (the app's list); photos not in it go
+    last in name order.
+    """
     folder = Path(photo_dir)
     if not folder.is_dir():
         raise AlbumError(f"사진 폴더를 찾을 수 없습니다: {folder}")
@@ -583,6 +618,10 @@ def build_album(photo_dir, output=None, font=None):
     # Converted photos live here until the PDF is written; the photo folder stays untouched.
     with tempfile.TemporaryDirectory(prefix="a4lbum_") as work_dir:
         items, warnings = scan_folder(folder, work_dir)
+        if order is not None:
+            rank = {name: i for i, name in enumerate(order)}
+            items.sort(key=lambda item: (0, rank[item.file_name]) if item.file_name in rank
+                       else (1, item.sort_key))
         if not items:
             raise AlbumError(f"넣을 사진이 없습니다: {folder}", warnings)
         fonts = Fonts(font or default_font_path())

@@ -1,8 +1,9 @@
 """Small window for building an A4 photo album without a terminal.
 
-Pick a photo folder, press "앨범 만들기", and the same PDF as
-`make_album.py` is produced. This is the entry point of the portable
-앨범만들기.exe (see build_portable.ps1).
+Pick a photo folder, check the photo order in the list (sort by name,
+created or modified date), and press "앨범 만들기" to get the same kind of
+PDF as `make_album.py`, in the listed order. This is the entry point of the
+portable 앨범 만들기.exe (see build_portable.ps1).
 
 Usage:
     python scripts/album_app.py [PHOTO_DIR]
@@ -22,17 +23,91 @@ from tkinter import filedialog, messagebox, ttk
 import make_album
 
 TITLE = "A4 사진 앨범 만들기"
+SORT_KEYS = ("name", "created", "modified")
 
 
-def _run(photo_dir, output):
+def sort_label(key):
+    """Text shown in the sort box for a sort key."""
+    return {"name": "이름 순 정렬",
+            "created": "만든 날짜 순 정렬",
+            "modified": "수정한 날짜 순 정렬"}[key]
+
+
+def sort_photos(photos, mode, reverse):
+    """Photos (make_album.PhotoFile) in the order of a sort key; date ties go by name."""
+    if mode == "created":
+        key = lambda p: (p.created, make_album.natural_key(p.name))
+    elif mode == "modified":
+        key = lambda p: (p.modified, make_album.natural_key(p.name))
+    else:
+        key = lambda p: make_album.natural_key(p.name)
+    result = sorted(photos, key=key)
+    if reverse:
+        result.reverse()
+    return result
+
+
+def _run(photo_dir, output, order=None):
     """Build the album; return the lines to show and the PDF path (None on failure)."""
     try:
-        out, photos, pages, warnings = make_album.build_album(photo_dir, output or None)
+        out, photos, pages, warnings = make_album.build_album(photo_dir, output or None, order=order)
     except make_album.AlbumError as exc:
         return [*map(str, exc.warnings), f"오류: {exc}"], None
     except Exception as exc:  # keep the window alive whatever happens
         return [f"오류: 예상하지 못한 문제가 생겼습니다: {exc}"], None
     return make_album.report_lines(out, photos, pages, warnings), out
+
+
+class PhotoList(ttk.Frame):
+    """Scrollable list of file names in album order.
+
+    Rows are positional: row i always shows the i-th photo, so reordering only
+    rewrites label texts and rows are created or destroyed only when the count changes.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.rows = []
+        self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, height=1)
+        scroll = ttk.Scrollbar(self, command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.inner = ttk.Frame(self.canvas)
+        self.inner.columnconfigure(0, weight=1)
+        window = self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self.inner.bind("<Configure>",
+                        lambda _e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(window, width=e.width))
+        self.empty = ttk.Label(self.inner, text="사진이 없습니다.")
+        # The wheel scrolls the list only while the pointer is over it.
+        self.bind("<Enter>", lambda _e: self.bind_all("<MouseWheel>", self._on_wheel))
+        self.bind("<Leave>", lambda _e: self.unbind_all("<MouseWheel>"))
+
+    def _on_wheel(self, event):
+        if self.canvas.yview() != (0.0, 1.0):
+            self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+    def _add_row(self):
+        label = ttk.Label(self.inner, anchor="w")
+        label.grid(row=len(self.rows), column=0, sticky="ew")
+        self.rows.append(label)
+
+    def show(self, names, folder_chosen):
+        """names in list order."""
+        while len(self.rows) < len(names):
+            self._add_row()
+        while len(self.rows) > len(names):
+            self.rows.pop().destroy()
+        for i, (label, name) in enumerate(zip(self.rows, names), 1):
+            label.configure(text=f"{i:>3}   {name}")
+        if names or not folder_chosen:
+            self.empty.grid_forget()
+        else:
+            self.empty.grid(row=0, column=0, sticky="w")
+
+    def labels(self):
+        return [label.cget("text") for label in self.rows]
 
 
 class AlbumApp:
@@ -41,19 +116,23 @@ class AlbumApp:
         self.busy = False
         self.last_pdf = None
         self.output_custom = False
+        self.photos = []  # make_album.PhotoFile, in album order
         self._results = queue.Queue()
 
         root.title(TITLE)
         # Sizes are in screen pixels, so scale them with the display (tk scaling is 1.33 at 100%).
         zoom = float(root.tk.call("tk", "scaling")) / (96 / 72)
-        root.minsize(int(520 * zoom), int(320 * zoom))
-        root.geometry(f"{int(720 * zoom)}x{int(420 * zoom)}")
+        # Keep the window on screen at 150%+ display scaling.
+        fit = int(root.winfo_screenheight() * 0.75)
+        root.minsize(int(560 * zoom), min(int(520 * zoom), fit))
+        root.geometry(f"{int(760 * zoom)}x{min(int(680 * zoom), fit)}")
         root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         frame = ttk.Frame(root, padding=12)
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(3, weight=1)
+        frame.rowconfigure(2, weight=3)
+        frame.rowconfigure(4, weight=1)
 
         self.photo_dir = tk.StringVar()
         self.output = tk.StringVar()
@@ -68,24 +147,68 @@ class AlbumApp:
         self.output_button = ttk.Button(frame, text="찾아보기…", command=self.choose_output)
         self.output_button.grid(row=1, column=2)
 
+        order_frame = ttk.LabelFrame(frame, text="사진 순서", padding=4)
+        order_frame.grid(row=2, column=0, columnspan=3, sticky="nsew", pady=(6, 0))
+        bar = ttk.Frame(order_frame)
+        bar.pack(fill="x", pady=(0, 4))
+        self.sort_mode = tk.StringVar(value=sort_label("name"))  # the shown text
+        self.reverse = tk.BooleanVar(value=False)
+        ttk.Label(bar, text="정렬").pack(side="left")
+        self.sort_box = ttk.Combobox(bar, textvariable=self.sort_mode, values=[sort_label(k) for k in SORT_KEYS],
+                                     state="readonly", width=18)
+        self.sort_box.pack(side="left", padx=6)
+        self.sort_box.bind("<<ComboboxSelected>>", self.on_sort_selected)
+        self.reverse_check = ttk.Checkbutton(bar, text="역순(내림차순)으로 정렬", variable=self.reverse,
+                                             command=self.resort)
+        self.reverse_check.pack(side="left", padx=6)
+        self.photo_list = PhotoList(order_frame)
+        self.photo_list.pack(fill="both", expand=True)
+
         buttons = ttk.Frame(frame)
-        buttons.grid(row=2, column=0, columnspan=3, pady=10)
+        buttons.grid(row=3, column=0, columnspan=3, pady=10)
         self.build_button = ttk.Button(buttons, text="앨범 만들기", command=self.start)
         self.build_button.pack(side="left", padx=4)
         self.open_button = ttk.Button(buttons, text="PDF 열기", command=self.open_pdf, state="disabled")
         self.open_button.pack(side="left", padx=4)
 
         log_frame = ttk.LabelFrame(frame, text="결과", padding=4)
-        log_frame.grid(row=3, column=0, columnspan=3, sticky="nsew")
-        self.log = tk.Text(log_frame, height=10, wrap="word", state="disabled", font="TkDefaultFont")
+        log_frame.grid(row=4, column=0, columnspan=3, sticky="nsew")
+        self.log = tk.Text(log_frame, height=6, wrap="word", state="disabled", font="TkDefaultFont")
         scroll = ttk.Scrollbar(log_frame, command=self.log.yview)
         self.log.configure(yscrollcommand=scroll.set)
         self.log.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
         self.photo_dir.trace_add("write", self._refresh_default_output)
+        self.photo_dir.trace_add("write", self.load_photos)
         if initial_folder and Path(initial_folder).is_dir():
             self.photo_dir.set(str(initial_folder))
+
+    # --- photo order ----------------------------------------------------------
+
+    def _folder(self):
+        folder = self.photo_dir.get().strip()
+        return folder if folder and Path(folder).is_dir() else None
+
+    def load_photos(self, *_):
+        folder = self._folder()
+        self.photos = make_album.list_photo_files(folder) if folder else []
+        self.resort()
+        self.photo_list.canvas.yview_moveto(0)  # a new folder starts at its first photo
+
+    def mode(self):
+        """The sort key of the text in the sort box."""
+        return next(k for k in SORT_KEYS if sort_label(k) == self.sort_mode.get())
+
+    def resort(self):
+        self.photos = sort_photos(self.photos, self.mode(), self.reverse.get())
+        self._show_photos()
+
+    def on_sort_selected(self, _event=None):
+        self.resort()
+
+    def _show_photos(self):
+        self.photo_list.show([p.name for p in self.photos], self._folder() is not None)
 
     # --- fields ---------------------------------------------------------------
 
@@ -140,7 +263,9 @@ class AlbumApp:
         self._set_busy(True)
         self._show(["만드는 중…"])
         output = self.output.get().strip()
-        threading.Thread(target=lambda: self._results.put(_run(folder, output)), daemon=True).start()
+        # Snapshot the list now; changes made while building wait for the next run.
+        order = [p.name for p in self.photos]
+        threading.Thread(target=lambda: self._results.put(_run(folder, output, order)), daemon=True).start()
         self.root.after(100, self._poll)
 
     def _poll(self):

@@ -1,5 +1,6 @@
 """State logic of the album window, driven through a hidden Tk root."""
 
+import os
 import time
 import tkinter as tk
 
@@ -160,3 +161,94 @@ def test_smoke_test_mode_reports_failure(tmp_path):
     log = tmp_path / "log.txt"
     assert album_app.main(["--smoke-test", str(tmp_path / "없음"), str(tmp_path / "x.pdf"), str(log)]) == 1
     assert log.read_text(encoding="utf-8").startswith("오류: ")
+
+
+# --- 003: photo order list -------------------------------------------------
+
+
+@pytest.fixture
+def four_photos(make_jpeg):
+    for name in ["A.jpg", "B.jpg", "C.jpg", "D.jpg"]:
+        make_jpeg(name)
+
+
+def order(app):
+    return [p.name for p in app.photos]
+
+
+def test_folder_shows_photos_in_name_order(root, photo_dir, make_jpeg, tmp_path):
+    for name in ["10_산.jpg", "2_바다.jpg", "메모.txt"]:
+        make_jpeg(name) if name.endswith(".jpg") else (photo_dir / name).write_text("x")
+    app = album_app.AlbumApp(root, str(photo_dir))
+    assert order(app) == ["2_바다.jpg", "10_산.jpg"]
+    assert app.photo_list.labels() == ["  1   2_바다.jpg", "  2   10_산.jpg"]
+    assert app.sort_mode.get() == "이름 순 정렬" and app.reverse.get() is False
+
+    app.photo_dir.set(str(tmp_path / "없음"))
+    assert order(app) == [] and app.photo_list.labels() == []
+
+
+def test_empty_folder_says_no_photos(root, photo_dir):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    assert app.photo_list.empty.winfo_manager() == "grid"
+    app.photo_dir.set("")
+    assert app.photo_list.empty.winfo_manager() == ""
+
+
+def test_sort_mode_and_reverse(root, photo_dir, make_jpeg):
+    for i, name in enumerate(["a.jpg", "b.jpg", "c.jpg"]):
+        os.utime(make_jpeg(name), (0, 1_000_000 - i * 1000))
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.sort_mode.set("수정한 날짜 순 정렬")
+    app.on_sort_selected()
+    assert order(app) == ["c.jpg", "b.jpg", "a.jpg"]
+    app.reverse.set(True)
+    app.resort()
+    assert order(app) == ["a.jpg", "b.jpg", "c.jpg"]
+
+
+def test_new_folder_keeps_a_sort_mode_and_reverse(root, photo_dir, four_photos, make_jpeg, tmp_path):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.reverse.set(True)
+    app.resort()
+    other = tmp_path / "다른 폴더"
+    other.mkdir()
+    for name in ["1.jpg", "2.jpg"]:
+        make_jpeg(name, folder=other)
+    app.photo_dir.set(str(other))
+    assert order(app) == ["2.jpg", "1.jpg"] and app.reverse.get() is True
+
+
+def test_start_passes_the_listed_order(root, photo_dir, four_photos, monkeypatch):
+    calls = []
+
+    def fake_build(photo_dir, output=None, font=None, order=None):
+        calls.append(order)
+        raise make_album.AlbumError("멈춤")
+
+    monkeypatch.setattr(album_app.make_album, "build_album", fake_build)
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.reverse.set(True)
+    app.resort()
+    app.start()
+    wait_until_idle(app)
+    assert calls == [["D.jpg", "C.jpg", "B.jpg", "A.jpg"]]
+
+
+def test_new_folder_list_starts_at_the_top(root, photo_dir, make_jpeg, tmp_path):
+    for i in range(40):
+        make_jpeg(f"{i}.jpg", size=(8, 8))
+    app = album_app.AlbumApp(root, str(photo_dir))
+    root.deiconify()
+    root.update()
+    canvas = app.photo_list.canvas
+    canvas.yview_moveto(1.0)
+    root.update()
+    assert canvas.canvasy(0) > 0
+
+    other = tmp_path / "다른 폴더"
+    other.mkdir()
+    make_jpeg("1.jpg", folder=other)
+    app.photo_dir.set(str(other))
+    root.update()
+    assert canvas.canvasy(0) == 0
