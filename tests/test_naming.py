@@ -41,3 +41,9 @@ def test_unnumbered_names_come_after_numbered():
 def test_sort_is_case_insensitive_and_deterministic():
     names = ["b.jpg", "A.jpg", "a.jpg"]
     assert sorted(names, key=natural_key) == ["A.jpg", "a.jpg", "b.jpg"]
+
+
+def test_extract_caption_can_keep_the_number():
+    assert extract_caption("283_벚꽃 축제 모습.jpg", strip_number=False) == "283_벚꽃 축제 모습"
+    assert extract_caption("12_  바다 앞에서  .JPEG", strip_number=False) == "12_  바다 앞에서"
+    assert extract_caption("283_벚꽃 축제 모습.jpg") == "벚꽃 축제 모습"

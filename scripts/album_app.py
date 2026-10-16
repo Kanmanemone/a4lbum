@@ -2,8 +2,9 @@
 
 Pick a photo folder, arrange the photo order in the list (sort by name,
 created or modified date, or move photos one by one), and press "앨범 만들기"
-to get the same kind of PDF as `make_album.py`, in the listed order. This is
-the entry point of the portable 앨범 만들기.exe (see build_portable.ps1).
+to get the same kind of PDF as `make_album.py`, in the listed order. A
+checkbox decides whether a leading "숫자_" is dropped from the captions. This
+is the entry point of the portable 앨범 만들기.exe (see build_portable.ps1).
 
 Usage:
     python scripts/album_app.py [PHOTO_DIR]
@@ -40,6 +41,44 @@ def move_label(where):
     return {"up": "▲", "down": "▼", "top": "맨 위로", "bottom": "맨 아래로"}[where]
 
 
+def strip_number_help():
+    """Hover text of the "숫자_" checkbox (the README leaves this to the window)."""
+    return ("체크하면 파일 이름 맨 앞의 \"숫자_\"를 빼고 메모 라벨에 넣습니다.\n"
+            "\n"
+            "  283_벚꽃 축제 모습.jpg  →  벚꽃 축제 모습\n"
+            "  3_엄마_아빠.jpg  →  엄마_아빠  (맨 앞 \"숫자_\"만 뺌)\n"
+            "  2026여행.jpg  →  2026여행  (숫자 뒤에 \"_\"가 없으면 그대로)\n"
+            "\n"
+            "체크하지 않으면 확장자만 뺀 파일 이름이 그대로 들어갑니다.")
+
+
+class Tooltip:
+    """A small window with help text, shown at once while the pointer is on a widget."""
+
+    def __init__(self, widget, text):
+        self.widget, self.text = widget, text
+        self.window = None
+        widget.bind("<Enter>", self.show, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def show(self, _event=None):
+        if self.window is not None:
+            return
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        x = self.widget.winfo_rootx() + 16
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.window.wm_geometry(f"+{x}+{y}")
+        tk.Label(self.window, text=self.text, justify="left", background="#FFFFE1", relief="solid",
+                 borderwidth=1, padx=8, pady=6).pack()
+
+    def hide(self, _event=None):
+        if self.window is not None:
+            self.window.destroy()
+            self.window = None
+
+
 def sort_photos(photos, mode, reverse):
     """Photos (make_album.PhotoFile) in the order of a sort key; date ties go by name."""
     if mode == "created":
@@ -54,10 +93,11 @@ def sort_photos(photos, mode, reverse):
     return result
 
 
-def _run(photo_dir, output, order=None):
+def _run(photo_dir, output, order=None, strip_number=True):
     """Build the album; return the lines to show and the PDF path (None on failure)."""
     try:
-        out, photos, pages, warnings = make_album.build_album(photo_dir, output or None, order=order)
+        out, photos, pages, warnings = make_album.build_album(
+            photo_dir, output or None, order=order, strip_number=strip_number)
     except make_album.AlbumError as exc:
         return [*map(str, exc.warnings), f"오류: {exc}"], None
     except Exception as exc:  # keep the window alive whatever happens
@@ -149,7 +189,7 @@ class AlbumApp:
         frame.pack(fill="both", expand=True)
         frame.columnconfigure(1, weight=1)
         frame.rowconfigure(2, weight=3)
-        frame.rowconfigure(4, weight=1)
+        frame.rowconfigure(5, weight=1)
 
         self.photo_dir = tk.StringVar()
         self.output = tk.StringVar()
@@ -181,15 +221,21 @@ class AlbumApp:
         self.photo_list = PhotoList(order_frame, self.move)
         self.photo_list.pack(fill="both", expand=True)
 
+        self.strip_number = tk.BooleanVar(value=False)
+        strip_check = ttk.Checkbutton(frame, text='파일 이름 앞 "숫자_" 빼고 메모 라벨 넣기',
+                                      variable=self.strip_number)
+        strip_check.grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.strip_tip = Tooltip(strip_check, strip_number_help())
+
         buttons = ttk.Frame(frame)
-        buttons.grid(row=3, column=0, columnspan=3, pady=10)
+        buttons.grid(row=4, column=0, columnspan=3, pady=10)
         self.build_button = ttk.Button(buttons, text="앨범 만들기", command=self.start)
         self.build_button.pack(side="left", padx=4)
         self.open_button = ttk.Button(buttons, text="PDF 열기", command=self.open_pdf, state="disabled")
         self.open_button.pack(side="left", padx=4)
 
         log_frame = ttk.LabelFrame(frame, text="결과", padding=4)
-        log_frame.grid(row=4, column=0, columnspan=3, sticky="nsew")
+        log_frame.grid(row=5, column=0, columnspan=3, sticky="nsew")
         self.log = tk.Text(log_frame, height=6, wrap="word", state="disabled", font="TkDefaultFont")
         scroll = ttk.Scrollbar(log_frame, command=self.log.yview)
         self.log.configure(yscrollcommand=scroll.set)
@@ -294,9 +340,11 @@ class AlbumApp:
         self._set_busy(True)
         self._show(["만드는 중…"])
         output = self.output.get().strip()
-        # Snapshot the list now; changes made while building wait for the next run.
+        # Snapshot the list and checkbox now; changes made while building wait for the next run.
         order = [p.name for p in self.photos]
-        threading.Thread(target=lambda: self._results.put(_run(folder, output, order)), daemon=True).start()
+        strip_number = self.strip_number.get()
+        threading.Thread(target=lambda: self._results.put(_run(folder, output, order, strip_number)),
+                         daemon=True).start()
         self.root.after(100, self._poll)
 
     def _poll(self):

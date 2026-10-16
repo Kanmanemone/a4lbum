@@ -4,7 +4,7 @@ Each A4 page holds two photos (top and bottom). A sticky-note label hanging off
 the top-right corner of every photo shows its caption, taken from the file
 name: "283_벚꽃 축제 모습.jpg" -> "벚꽃 축제 모습". Photos are ordered by file
 name, comparing leading numbers by value. These are the CLI defaults; the app
-window (album_app.py) passes its own photo order.
+window (album_app.py) passes its own photo order and may keep the "숫자_".
 
 JPEG files are embedded byte-for-byte (no resizing or re-compression) and the
 photo folder is only ever read. Other formats (HEIC, WEBP, GIF, BMP, TIFF, AVIF)
@@ -194,9 +194,11 @@ class AlbumError(Exception):
 # --- File names ----------------------------------------------------------------
 
 
-def extract_caption(file_name):
+def extract_caption(file_name, strip_number=True):
     stem = os.path.splitext(file_name)[0]
-    return re.sub(r"^\d+_", "", stem, count=1).strip()
+    if strip_number:
+        stem = re.sub(r"^\d+_", "", stem, count=1)
+    return stem.strip()
 
 
 def natural_key(file_name):
@@ -284,7 +286,7 @@ def list_photo_files(folder):
         return []
 
 
-def scan_folder(folder, work_dir):
+def scan_folder(folder, work_dir, strip_number=True):
     """Collect photos in folder; formats PDF cannot hold are converted into work_dir."""
     items, warnings = [], []
     for entry, warning in _photo_entries(folder):
@@ -302,7 +304,7 @@ def scan_folder(folder, work_dir):
             warnings.append(AlbumWarning("UNREADABLE", entry.name, "사진 파일을 열 수 없어 건너뛰었습니다."))
             continue
         display = (size[1], size[0]) if orientation >= 5 else size
-        items.append(PhotoItem(path, entry.name, extract_caption(entry.name), natural_key(entry.name),
+        items.append(PhotoItem(path, entry.name, extract_caption(entry.name, strip_number), natural_key(entry.name),
                                kind, size, orientation, display))
     items.sort(key=lambda item: item.sort_key)
     return items, warnings
@@ -603,11 +605,11 @@ def report_lines(out, photo_count, page_count, warnings):
             f"PDF: {out}"]
 
 
-def build_album(photo_dir, output=None, font=None, order=None):
+def build_album(photo_dir, output=None, font=None, order=None, strip_number=True):
     """Build the album PDF.
 
     order: file names in the wanted order (the app's list); photos not in it go
-    last in name order.
+    last in name order. strip_number: drop a leading "숫자_" from captions.
     """
     folder = Path(photo_dir)
     if not folder.is_dir():
@@ -617,7 +619,7 @@ def build_album(photo_dir, output=None, font=None, order=None):
 
     # Converted photos live here until the PDF is written; the photo folder stays untouched.
     with tempfile.TemporaryDirectory(prefix="a4lbum_") as work_dir:
-        items, warnings = scan_folder(folder, work_dir)
+        items, warnings = scan_folder(folder, work_dir, strip_number)
         if order is not None:
             rank = {name: i for i, name in enumerate(order)}
             items.sort(key=lambda item: (0, rank[item.file_name]) if item.file_name in rank

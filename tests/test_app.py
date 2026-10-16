@@ -85,7 +85,8 @@ def test_build_shows_cli_lines_and_enables_open(root, photo_dir, make_jpeg):
     wait_until_idle(app)
 
     out = make_album.default_output_path(photo_dir)
-    _, photos, pages, warnings = make_album.build_album(photo_dir)
+    # The window leaves "숫자_" in captions unless its checkbox is ticked.
+    _, photos, pages, warnings = make_album.build_album(photo_dir, strip_number=False)
     assert log_lines(app) == make_album.report_lines(out, photos, pages, warnings)
     assert app.last_pdf == out and out.exists()
     assert enabled(app.build_button) and enabled(app.open_button)
@@ -275,19 +276,24 @@ def test_new_folder_keeps_a_sort_mode_and_reverse(root, photo_dir, four_photos, 
     assert order(app) == ["2.jpg", "1.jpg"] and app.reverse.get() is True
 
 
-def test_start_passes_the_listed_order(root, photo_dir, four_photos, monkeypatch):
+def test_start_passes_order_and_strip_number(root, photo_dir, four_photos, monkeypatch):
     calls = []
 
-    def fake_build(photo_dir, output=None, font=None, order=None):
-        calls.append(order)
+    def fake_build(photo_dir, output=None, font=None, order=None, strip_number=True):
+        calls.append((order, strip_number))
         raise make_album.AlbumError("멈춤")
 
     monkeypatch.setattr(album_app.make_album, "build_album", fake_build)
     app = album_app.AlbumApp(root, str(photo_dir))
+    assert app.strip_number.get() is False
     app.move(3, "top")
     app.start()
     wait_until_idle(app)
-    assert calls == [["D.jpg", "A.jpg", "B.jpg", "C.jpg"]]
+    app.strip_number.set(True)
+    app.start()
+    wait_until_idle(app)
+    assert calls == [(["D.jpg", "A.jpg", "B.jpg", "C.jpg"], False),
+                     (["D.jpg", "A.jpg", "B.jpg", "C.jpg"], True)]
 
 
 def test_new_folder_list_starts_at_the_top(root, photo_dir, make_jpeg, tmp_path):
@@ -307,3 +313,14 @@ def test_new_folder_list_starts_at_the_top(root, photo_dir, make_jpeg, tmp_path)
     app.photo_dir.set(str(other))
     root.update()
     assert canvas.canvasy(0) == 0
+
+
+def test_strip_number_checkbox_explains_itself_on_hover(root):
+    app = album_app.AlbumApp(root)
+    tip = app.strip_tip
+    assert tip.window is None
+    tip.show()
+    label = tip.window.winfo_children()[0]
+    assert "283_벚꽃 축제 모습.jpg  →  벚꽃 축제 모습" in label.cget("text")
+    tip.hide()
+    assert tip.window is None
