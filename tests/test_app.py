@@ -176,6 +176,10 @@ def order(app):
     return [p.name for p in app.photos]
 
 
+def reverse_enabled(app):
+    return "disabled" not in app.reverse_check.state()
+
+
 def test_folder_shows_photos_in_name_order(root, photo_dir, make_jpeg, tmp_path):
     for name in ["10_산.jpg", "2_바다.jpg", "메모.txt"]:
         make_jpeg(name) if name.endswith(".jpg") else (photo_dir / name).write_text("x")
@@ -207,6 +211,58 @@ def test_sort_mode_and_reverse(root, photo_dir, make_jpeg):
     assert order(app) == ["a.jpg", "b.jpg", "c.jpg"]
 
 
+@pytest.mark.parametrize(
+    "index, where, expected",
+    [
+        (2, "up", "ACBD"),
+        (1, "down", "ACBD"),
+        (2, "top", "CABD"),
+        (1, "bottom", "ACDB"),
+        (0, "up", "ABCD"),
+        (0, "top", "ABCD"),
+        (3, "down", "ABCD"),
+        (3, "bottom", "ABCD"),
+    ],
+)
+def test_move_buttons_switch_to_custom(root, photo_dir, four_photos, index, where, expected):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    assert reverse_enabled(app)
+    app.move(index, where)
+    assert "".join(name[0] for name in order(app)) == expected
+    assert app.sort_mode.get() == "커스텀" and not reverse_enabled(app)
+    assert app.photo_list.labels()[0].endswith(f"{expected[0]}.jpg")
+
+
+def test_row_buttons_call_move(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    buttons = app.photo_list.rows[2][1]
+    assert [b.cget("text") for b in buttons] == ["▲", "▼", "맨 위로", "맨 아래로"]
+    # A gap on the left of 맨 위로 separates it from ▲ ▼.
+    assert [b.grid_info()["padx"] for b in buttons] == [0, 0, (8, 0), 0]
+    buttons[2].invoke()
+    assert "".join(name[0] for name in order(app)) == "CABD"
+
+
+def test_choosing_a_sort_mode_leaves_custom(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.move(3, "top")
+    app.sort_mode.set("이름 순 정렬")
+    app.on_sort_selected()
+    assert "".join(name[0] for name in order(app)) == "ABCD" and reverse_enabled(app)
+
+
+def test_new_folder_resets_custom_to_name_order(root, photo_dir, four_photos, make_jpeg, tmp_path):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.move(3, "top")
+    other = tmp_path / "다른 폴더"
+    other.mkdir()
+    for name in ["2.jpg", "1.jpg"]:
+        make_jpeg(name, folder=other)
+    app.photo_dir.set(str(other))
+    assert order(app) == ["1.jpg", "2.jpg"]
+    assert app.sort_mode.get() == "이름 순 정렬" and reverse_enabled(app)
+
+
 def test_new_folder_keeps_a_sort_mode_and_reverse(root, photo_dir, four_photos, make_jpeg, tmp_path):
     app = album_app.AlbumApp(root, str(photo_dir))
     app.reverse.set(True)
@@ -228,11 +284,10 @@ def test_start_passes_the_listed_order(root, photo_dir, four_photos, monkeypatch
 
     monkeypatch.setattr(album_app.make_album, "build_album", fake_build)
     app = album_app.AlbumApp(root, str(photo_dir))
-    app.reverse.set(True)
-    app.resort()
+    app.move(3, "top")
     app.start()
     wait_until_idle(app)
-    assert calls == [["D.jpg", "C.jpg", "B.jpg", "A.jpg"]]
+    assert calls == [["D.jpg", "A.jpg", "B.jpg", "C.jpg"]]
 
 
 def test_new_folder_list_starts_at_the_top(root, photo_dir, make_jpeg, tmp_path):

@@ -1,9 +1,9 @@
 """Small window for building an A4 photo album without a terminal.
 
-Pick a photo folder, check the photo order in the list (sort by name,
-created or modified date), and press "앨범 만들기" to get the same kind of
-PDF as `make_album.py`, in the listed order. This is the entry point of the
-portable 앨범 만들기.exe (see build_portable.ps1).
+Pick a photo folder, arrange the photo order in the list (sort by name,
+created or modified date, or move photos one by one), and press "앨범 만들기"
+to get the same kind of PDF as `make_album.py`, in the listed order. This is
+the entry point of the portable 앨범 만들기.exe (see build_portable.ps1).
 
 Usage:
     python scripts/album_app.py [PHOTO_DIR]
@@ -24,13 +24,20 @@ import make_album
 
 TITLE = "A4 사진 앨범 만들기"
 SORT_KEYS = ("name", "created", "modified")
+CUSTOM = "custom"  # after the user moves a photo by hand; not selectable
+MOVES = ("up", "down", "top", "bottom")
 
 
 def sort_label(key):
-    """Text shown in the sort box for a sort key."""
+    """Text shown in the sort box for a sort key (or CUSTOM)."""
     return {"name": "이름 순 정렬",
             "created": "만든 날짜 순 정렬",
-            "modified": "수정한 날짜 순 정렬"}[key]
+            "modified": "수정한 날짜 순 정렬",
+            CUSTOM: "커스텀"}[key]
+
+
+def move_label(where):
+    return {"up": "▲", "down": "▼", "top": "맨 위로", "bottom": "맨 아래로"}[where]
 
 
 def sort_photos(photos, mode, reverse):
@@ -59,14 +66,15 @@ def _run(photo_dir, output, order=None):
 
 
 class PhotoList(ttk.Frame):
-    """Scrollable list of file names in album order.
+    """Scrollable list of file names; every row has ▲ ▼ 맨 위로 맨 아래로 buttons.
 
     Rows are positional: row i always shows the i-th photo, so reordering only
     rewrites label texts and rows are created or destroyed only when the count changes.
     """
 
-    def __init__(self, parent):
+    def __init__(self, parent, on_move):
         super().__init__(parent)
+        self.on_move = on_move
         self.rows = []
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, height=1)
         scroll = ttk.Scrollbar(self, command=self.canvas.yview)
@@ -89,17 +97,26 @@ class PhotoList(ttk.Frame):
             self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
     def _add_row(self):
+        index = len(self.rows)
         label = ttk.Label(self.inner, anchor="w")
-        label.grid(row=len(self.rows), column=0, sticky="ew")
-        self.rows.append(label)
+        label.grid(row=index, column=0, sticky="ew")
+        # Width only for the one-symbol buttons; Korean words size themselves.
+        buttons = [ttk.Button(self.inner, text=move_label(where), width=3 if where in ("up", "down") else None,
+                              command=lambda w=where: self.on_move(index, w)) for where in MOVES]
+        for column, button in enumerate(buttons, 1):
+            # A small gap separates the one-step ▲ ▼ from 맨 위로/맨 아래로.
+            button.grid(row=index, column=column, padx=(8, 0) if column == 3 else 0)
+        self.rows.append((label, buttons))
 
     def show(self, names, folder_chosen):
         """names in list order."""
         while len(self.rows) < len(names):
             self._add_row()
         while len(self.rows) > len(names):
-            self.rows.pop().destroy()
-        for i, (label, name) in enumerate(zip(self.rows, names), 1):
+            label, buttons = self.rows.pop()
+            for widget in (label, *buttons):
+                widget.destroy()
+        for i, ((label, _), name) in enumerate(zip(self.rows, names), 1):
             label.configure(text=f"{i:>3}   {name}")
         if names or not folder_chosen:
             self.empty.grid_forget()
@@ -107,7 +124,7 @@ class PhotoList(ttk.Frame):
             self.empty.grid(row=0, column=0, sticky="w")
 
     def labels(self):
-        return [label.cget("text") for label in self.rows]
+        return [label.cget("text") for label, _ in self.rows]
 
 
 class AlbumApp:
@@ -161,7 +178,7 @@ class AlbumApp:
         self.reverse_check = ttk.Checkbutton(bar, text="역순(내림차순)으로 정렬", variable=self.reverse,
                                              command=self.resort)
         self.reverse_check.pack(side="left", padx=6)
-        self.photo_list = PhotoList(order_frame)
+        self.photo_list = PhotoList(order_frame, self.move)
         self.photo_list.pack(fill="both", expand=True)
 
         buttons = ttk.Frame(frame)
@@ -193,19 +210,33 @@ class AlbumApp:
     def load_photos(self, *_):
         folder = self._folder()
         self.photos = make_album.list_photo_files(folder) if folder else []
+        if self.mode() == CUSTOM:
+            self.sort_mode.set(sort_label("name"))
+            self.reverse_check.state(["!disabled"])
         self.resort()
         self.photo_list.canvas.yview_moveto(0)  # a new folder starts at its first photo
 
     def mode(self):
-        """The sort key of the text in the sort box."""
-        return next(k for k in SORT_KEYS if sort_label(k) == self.sort_mode.get())
+        """The sort key of the text in the sort box (CUSTOM after hand moves)."""
+        return next(k for k in (*SORT_KEYS, CUSTOM) if sort_label(k) == self.sort_mode.get())
 
     def resort(self):
         self.photos = sort_photos(self.photos, self.mode(), self.reverse.get())
         self._show_photos()
 
     def on_sort_selected(self, _event=None):
+        self.reverse_check.state(["!disabled"])
         self.resort()
+
+    def move(self, index, where):
+        """Move a photo (top/up/down/bottom); any press switches the mode to 커스텀."""
+        photo = self.photos.pop(index)
+        target = {"top": 0, "up": max(index - 1, 0),
+                  "down": min(index + 1, len(self.photos)), "bottom": len(self.photos)}[where]
+        self.photos.insert(target, photo)
+        self.sort_mode.set(sort_label(CUSTOM))
+        self.reverse_check.state(["disabled"])
+        self._show_photos()
 
     def _show_photos(self):
         self.photo_list.show([p.name for p in self.photos], self._folder() is not None)
