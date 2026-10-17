@@ -1,9 +1,9 @@
 """Build a printable A4 photo album PDF from a folder of photos.
 
 Each A4 page holds two photos (top and bottom), centered on the page. A
-sticky-note label hangs off the top-right corner of every photo; room for it is
-kept on both sides so it never pushes the photo off center. The label shows the
-photo's caption, taken from the file
+sticky-note label, sized to its text, hangs off the top-right corner of every
+photo; room for it is kept on both sides so it never pushes the photo off
+center. The label shows the photo's caption, taken from the file
 name: "283_벚꽃 축제 모습.jpg" -> "벚꽃 축제 모습". Photos are ordered by file
 name, comparing leading numbers by value. These are the CLI defaults; the app
 window (album_app.py) passes its own photo order and may keep the "숫자_".
@@ -53,9 +53,9 @@ MARGIN = 10.0
 GAP = 10.0
 CELL_H = (PAGE_H - 2 * MARGIN - GAP) / 2  # 133.5
 
-LABEL_OUT_X = 10.0  # how far the label sticks out past the photo's right edge
-LABEL_OUT_Y = 5.0  # ... and above its top edge
-LABEL_MIN_W, LABEL_MAX_W = 30.0, 64.0
+LABEL_OUT_X = 10.0  # at most this far past the photo's right edge (never over half the label)
+LABEL_OUT_Y = 5.0  # how far the label sticks out above the photo's top edge
+LABEL_MIN_W, LABEL_MAX_W = 10.0, 64.0  # min ≈ a one-line label's height
 LABEL_PAD_X, LABEL_PAD_Y = 2.5, 2.5
 LINE_SPACING = 1.3
 FONT_START_PT, FONT_MIN_PT = 11, 8
@@ -427,9 +427,13 @@ def _build_label(caption, size, max_lines, photo, measure):
     text_w = max(measure(line, size) for line in lines)
     w = min(max(text_w + 2 * LABEL_PAD_X, LABEL_MIN_W), LABEL_MAX_W)
     h = len(lines) * size * LINE_SPACING * PT + 2 * LABEL_PAD_Y
-    right, top = photo.right + LABEL_OUT_X, photo.top + LABEL_OUT_Y
+    right, top = photo.right + min(LABEL_OUT_X, w / 2), photo.top + LABEL_OUT_Y
     return Label(lines, size, Rect(right - w, top - h, w, h), truncated)
 
+
+def line_x(label, line, measure):
+    """Left edge (mm) of a label line centered in the label."""
+    return label.rect.x + (label.rect.w - measure(line, label.font_size_pt)) / 2
 
 
 def _overlap_ok(label, photo):
@@ -607,7 +611,7 @@ def _draw_label(c, label, fonts):
     line_h = size * LINE_SPACING
     y = r.top * MM - LABEL_PAD_Y * MM - (line_h + size * 0.75) / 2
     for line in label.lines:
-        x = (r.x + LABEL_PAD_X) * MM
+        x = line_x(label, line, fonts.measure) * MM
         for name, run in fonts.runs(line):
             c.setFont(name, size)
             c.drawString(x, y, run)

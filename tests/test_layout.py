@@ -5,12 +5,14 @@ from make_album import (
     LABEL_MIN_W,
     LABEL_OUT_X,
     LABEL_OUT_Y,
+    LABEL_PAD_X,
     MAX_OVERLAP_RATIO,
     PAGE_H,
     PAGE_W,
     PRINTABLE,
     fit_label,
     fit_photo,
+    line_x,
     slot_geometry,
 )
 
@@ -74,9 +76,13 @@ def test_label_invariants(position, shape, caption):
     label = fit_label(CAPTIONS[caption], photo, measure)
 
     assert label is not None
-    assert label.rect.right == pytest.approx(photo.right + LABEL_OUT_X)
+    out_x = min(LABEL_OUT_X, label.rect.w / 2)
+    assert label.rect.right == pytest.approx(photo.right + out_x)
     assert label.rect.top == pytest.approx(photo.top + LABEL_OUT_Y)
-    assert LABEL_MIN_W - EPS <= label.rect.w <= LABEL_MAX_W + EPS
+    text_w = max(measure(line, label.font_size_pt) for line in label.lines)
+    assert label.rect.w == pytest.approx(min(max(text_w + 2 * LABEL_PAD_X, LABEL_MIN_W), LABEL_MAX_W))
+    # At least half of the label sits on the photo, so it never looks detached.
+    assert photo.right - label.rect.x >= label.rect.w / 2 - EPS
     assert 1 <= len(label.lines) <= 3
     assert PRINTABLE.contains(label.rect)
     assert PRINTABLE.contains(photo)
@@ -121,3 +127,28 @@ def test_label_wraps_within_max_width():
     assert len(label.lines) > 1
     for line in label.lines:
         assert measure(line, label.font_size_pt) <= LABEL_MAX_W
+
+
+def test_short_caption_label_hugs_the_text():
+    _, box = slot_geometry("top")
+    photo = fit_photo(SHAPES["landscape"], box)
+    label = fit_label("Beach", photo, measure)
+    assert label.rect.w == pytest.approx(measure("Beach", 11) + 2 * LABEL_PAD_X)
+    assert label.rect.w < 30
+
+    tiny = fit_label("집", photo, measure)
+    assert tiny.rect.w == pytest.approx(LABEL_MIN_W)
+    assert tiny.rect.w >= tiny.rect.h - 0.1  # not a thin vertical strip
+
+
+@pytest.mark.parametrize("caption", ["Beach", "집", CAPTIONS["long"]])
+def test_lines_are_centered_in_label(caption):
+    _, box = slot_geometry("top")
+    photo = fit_photo(SHAPES["landscape"], box)
+    label = fit_label(caption, photo, measure)
+    r = label.rect
+    for line in label.lines:
+        left = line_x(label, line, measure) - r.x
+        right = r.right - (line_x(label, line, measure) + measure(line, label.font_size_pt))
+        assert left == pytest.approx(right)
+        assert left >= LABEL_PAD_X - EPS
