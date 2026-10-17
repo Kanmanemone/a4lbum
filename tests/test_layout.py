@@ -6,6 +6,8 @@ from make_album import (
     LABEL_OUT_X,
     LABEL_OUT_Y,
     MAX_OVERLAP_RATIO,
+    PAGE_H,
+    PAGE_W,
     PRINTABLE,
     fit_label,
     fit_photo,
@@ -38,15 +40,29 @@ CAPTIONS = {
 @pytest.mark.parametrize("shape", SHAPES)
 def test_photo_fits_box_keeping_aspect_and_centered(position, shape):
     cell, box = slot_geometry(position)
-    assert box.w == pytest.approx(cell.w - LABEL_OUT_X)
+    # Room for the label on both sides, so the photo stays on the page's center line.
+    assert box.x == pytest.approx(cell.x + LABEL_OUT_X)
+    assert box.w == pytest.approx(cell.w - 2 * LABEL_OUT_X)
     assert box.h == pytest.approx(cell.h - LABEL_OUT_Y)
+    if position == "top":
+        assert (box.y, box.top) == pytest.approx((cell.y, cell.top - LABEL_OUT_Y))
+    else:
+        assert (box.y, box.top) == pytest.approx((cell.y + LABEL_OUT_Y, cell.top))
     w, h = SHAPES[shape]
     rect = fit_photo((w, h), box)
     assert rect.w / rect.h == pytest.approx(w / h)
     assert rect.w == pytest.approx(box.w) or rect.h == pytest.approx(box.h)
     assert box.contains(rect)
-    assert rect.x - box.x == pytest.approx(box.right - rect.right)
+    assert abs(rect.x - (PAGE_W - rect.right)) <= 0.1
     assert rect.y - box.y == pytest.approx(box.top - rect.top)
+
+
+@pytest.mark.parametrize("shape", SHAPES)
+def test_top_and_bottom_photos_mirror_about_page_middle(shape):
+    top = fit_photo(SHAPES[shape], slot_geometry("top")[1])
+    bottom = fit_photo(SHAPES[shape], slot_geometry("bottom")[1])
+    assert top.y - PAGE_H / 2 == pytest.approx(PAGE_H / 2 - bottom.top)
+    assert (top.x, top.w, top.h) == pytest.approx((bottom.x, bottom.w, bottom.h))
 
 
 @pytest.mark.parametrize("position", ["top", "bottom"])

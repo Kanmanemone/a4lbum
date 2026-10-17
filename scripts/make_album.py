@@ -1,7 +1,9 @@
 """Build a printable A4 photo album PDF from a folder of photos.
 
-Each A4 page holds two photos (top and bottom). A sticky-note label hanging off
-the top-right corner of every photo shows its caption, taken from the file
+Each A4 page holds two photos (top and bottom), centered on the page. A
+sticky-note label hangs off the top-right corner of every photo; room for it is
+kept on both sides so it never pushes the photo off center. The label shows the
+photo's caption, taken from the file
 name: "283_벚꽃 축제 모습.jpg" -> "벚꽃 축제 모습". Photos are ordered by file
 name, comparing leading numbers by value. These are the CLI defaults; the app
 window (album_app.py) passes its own photo order and may keep the "숫자_".
@@ -366,9 +368,16 @@ def scan_folder(folder, work_dir, strip_number=True):
 
 
 def slot_geometry(position):
-    y = MARGIN + CELL_H + GAP if position == "top" else MARGIN
-    cell = Rect(MARGIN, y, PAGE_W - 2 * MARGIN, CELL_H)
-    box = Rect(cell.x, cell.y, cell.w - LABEL_OUT_X, cell.h - LABEL_OUT_Y)
+    """The half-page cell and the box the photo is centered in.
+
+    The box leaves room for the label on both sides and on the page-edge side
+    (above the top photo, below the bottom one), so photos sit on the page's
+    center line and the two slots mirror each other about the page middle.
+    """
+    top = position == "top"
+    cell = Rect(MARGIN, MARGIN + CELL_H + GAP if top else MARGIN, PAGE_W - 2 * MARGIN, CELL_H)
+    box = Rect(cell.x + LABEL_OUT_X, cell.y if top else cell.y + LABEL_OUT_Y,
+               cell.w - 2 * LABEL_OUT_X, cell.h - LABEL_OUT_Y)
     return cell, box
 
 
@@ -420,6 +429,7 @@ def _build_label(caption, size, max_lines, photo, measure):
     h = len(lines) * size * LINE_SPACING * PT + 2 * LABEL_PAD_Y
     right, top = photo.right + LABEL_OUT_X, photo.top + LABEL_OUT_Y
     return Label(lines, size, Rect(right - w, top - h, w, h), truncated)
+
 
 
 def _overlap_ok(label, photo):
