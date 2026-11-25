@@ -48,6 +48,13 @@ def title():
     return tr("앨범 만들기 (한국어)", "Photo Album Maker (English)")
 
 
+def icon_path():
+    """The window icon: the exe's own icon (packaging/app.ico, see build_portable.ps1), or that file."""
+    if getattr(sys, "frozen", False):
+        return sys.executable
+    return str(Path(__file__).resolve().parent.parent / "packaging" / "app.ico")
+
+
 def sort_label(key):
     """Text shown in the sort box for a sort key (or CUSTOM)."""
     return {"name": tr("이름 순 정렬", "By name"),
@@ -569,6 +576,10 @@ def main(argv=None):
         except (AttributeError, OSError):
             pass
     root = tk.Tk()
+    try:
+        root.iconbitmap(default=icon_path())
+    except tk.TclError:
+        pass  # Tk's own icon is fine if the file cannot be read
     AlbumApp(root, argv[0] if argv else None)
     root.mainloop()
     return 0

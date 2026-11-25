@@ -131,6 +131,12 @@ def test_close_is_blocked_while_busy(root, monkeypatch):
 # --- Smoke-test entry point -----------------------------------------------
 
 
+def test_window_icon_is_the_app_icon(monkeypatch):
+    assert album_app.icon_path().endswith("app.ico") and os.path.exists(album_app.icon_path())
+    monkeypatch.setattr(album_app.sys, "frozen", True, raising=False)
+    assert album_app.icon_path() == album_app.sys.executable
+
+
 def test_smoke_test_mode_writes_log(photo_dir, make_jpeg, tmp_path):
     make_jpeg("1_집.jpg")
     out, log = tmp_path / "결과.pdf", tmp_path / "log.txt"

@@ -14,8 +14,8 @@
 
     1. Recreate .build-venv with requirements-build.txt only (no stray packages).
     2. Build with PyInstaller (onedir, no console window). The runtime goes to app\
-       next to the exe (--contents-directory app). The exe gets packaging\app.ico,
-       Tk's feather icon taken from tk86t.dll, so the file and its window look the same.
+       next to the exe (--contents-directory app). The exe gets packaging\app.ico (a photo with
+       a note label), and the window reads the same icon back from the exe.
        Copy the exe to the Korean and the English name.
     3. Smoke test both exes: copy the result to a Korean/space path, hide Python
        from PATH, and make a real album (JPEG + HEIC + GIF). Stop here if it fails.
