@@ -31,7 +31,7 @@ Put the photos in one folder and rename each file to the caption you want on its
 
 ### 3. Make the album
 
-![The album window: pick a photo folder, the photo order list appears, sort it or move photos with the buttons on each row, then press [Make album]](docs/app-window.png)
+![The album window: pick a photo folder, the photo order list appears, sort it or move photos with the buttons on each row (resting the pointer on a name shows its photo), then press [Make album]](docs/app-window.png)
 
 1. Double-click **`Photo Album Maker (English).exe`**.
    - If a blue "Windows protected your PC" box appears, click **More info → Run anyway**.
