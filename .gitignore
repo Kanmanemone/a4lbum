@@ -1,17 +1,47 @@
-# Logs
-*.log
-
-# Secrets & credentials - never commit these
-*.env
-*.env.*
-
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Spec Kit tooling (installed locally, not part of the product)
-.specify/
-.claude/skills/speckit-*/
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment / secrets - never commit these
+.env
+.env.*
+*.env
+!.env.example
+
+# Logs / temp
+*.log
+*.tmp
+**/tmp/*
+**/temp/*
+!**/tmp/.keep
+!**/tmp/.gitkeep
+!**/temp/.keep
+!**/temp/.gitkeep
+
+# AI coding agents (personal, local-only files)
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/album/
+/.specify/*
+!/.specify/memory/
+/.specify/memory/*
+!/.specify/memory/constitution.md
+# Claude Code
+CLAUDE.local.md
+# Codex
+/AGENTS.override.md
+# Gemini CLI: .gemini/.env is already covered by the .env rules above
+
+# Skill outputs (automatically archived)
+/.zenuml/
 
 # Python
 __pycache__/
