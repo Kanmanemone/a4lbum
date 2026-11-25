@@ -3,7 +3,8 @@
 Pick a photo folder, arrange the photo order in the list (sort by name,
 created or modified date, or move photos one by one), and press "앨범 만들기"
 to get the same kind of PDF as `make_album.py`, in the listed order. A
-checkbox decides whether a leading "숫자_" is dropped from the captions. This
+checkbox decides whether a leading "숫자_" is dropped from the captions, and
+double-clicking a name in the list renames the photo file. This
 is the entry point of the portable "앨범 만들기 (한국어).exe" and
 "Photo Album Maker (English).exe" (see build_portable.ps1): the two are the
 same program, and an exe name containing "(English)" switches it to English.
@@ -23,7 +24,7 @@ import tkinter as tk
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font, messagebox, ttk
 
 import make_album
 from make_album import tr
@@ -34,6 +35,7 @@ CUSTOM = "custom"  # after the user moves a photo by hand; not selectable
 # Tk draws no color emoji, and the U+FE0F variant may show as a box.
 NO_TAKEN_MARK = "⚠"
 MOVES = ("up", "down", "top", "bottom")
+FORBIDDEN_CHARS = '\\/:*?"<>|'  # Windows refuses these; "/" and "\" would also move the file
 
 
 def is_english_exe(executable):
@@ -124,6 +126,22 @@ def sort_photos(photos, mode, reverse):
     return result
 
 
+def rename_photo(folder, name, new_stem):
+    """Rename folder/name to new_stem plus its old extension; the new name, or None if unchanged.
+
+    ValueError for FORBIDDEN_CHARS. OSError comes from os.rename, which on
+    Windows never overwrites (FileExistsError) but allows a case-only change.
+    """
+    new_stem = new_stem.strip()
+    if any(c in FORBIDDEN_CHARS for c in new_stem):
+        raise ValueError(new_stem)
+    new = new_stem + os.path.splitext(name)[1]
+    if not new_stem or new == name:
+        return None
+    os.rename(Path(folder, name), Path(folder, new))
+    return new
+
+
 def _format_date(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -148,10 +166,13 @@ class PhotoList(ttk.Frame):
     rewrites label texts and rows are created or destroyed only when the count changes.
     """
 
-    def __init__(self, parent, on_move):
+    def __init__(self, parent, on_move, on_rename):
         super().__init__(parent)
-        self.on_move = on_move
+        self.on_move, self.on_rename = on_move, on_rename
         self.rows = []
+        self.names = []
+        self.locked = False  # no renaming while the album is being made
+        self.editing = None  # (row index, entry) while a name is being edited
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0, height=1)
         scroll = ttk.Scrollbar(self, command=self.canvas.yview)
         self.canvas.configure(yscrollcommand=scroll.set)
@@ -176,6 +197,7 @@ class PhotoList(ttk.Frame):
         index = len(self.rows)
         label = ttk.Label(self.inner, anchor="w")
         label.grid(row=index, column=0, sticky="ew")
+        label.bind("<Double-Button-1>", lambda _e: self.edit(index))
         date = ttk.Label(self.inner, anchor="e")
         date.grid(row=index, column=1, sticky="e", padx=(0, 12))
         # Width only for the one-symbol buttons; Korean words size themselves.
@@ -186,8 +208,38 @@ class PhotoList(ttk.Frame):
             button.grid(row=index, column=column, padx=(8, 0) if column == 4 else 0)
         self.rows.append((label, date, buttons))
 
+    def edit(self, index):
+        """Cover row index's name (not its number) with an entry holding the name without its extension."""
+        self.finish_edit()
+        if self.locked:
+            return
+        entry = ttk.Entry(self.inner)
+        entry.insert(0, os.path.splitext(self.names[index])[0])
+        entry.select_range(0, "end")
+        label = self.rows[index][0]
+        number = label.cget("text")[:-len(self.names[index])]  # "  1   " before the name
+        indent = font.nametofont(label.cget("font") or "TkDefaultFont").measure(number)
+        entry.grid(row=index, column=0, sticky="ew", padx=(indent, 0))
+        entry.focus_set()
+        entry.bind("<Return>", lambda _e: self.finish_edit())
+        entry.bind("<FocusOut>", lambda _e: self.finish_edit())
+        entry.bind("<Escape>", lambda _e: self.finish_edit(commit=False))
+        self.editing = (index, entry)
+
+    def finish_edit(self, commit=True):
+        """Close the open entry, if any; commit passes its text to on_rename."""
+        if self.editing is None:
+            return
+        (index, entry), self.editing = self.editing, None  # first, so FocusOut on destroy is a no-op
+        text = entry.get()
+        entry.destroy()
+        if commit:
+            self.on_rename(index, text)
+
     def show(self, names, dates, folder_chosen):
         """names and dates (text shown after the name, may be "") in list order."""
+        self.finish_edit(commit=False)
+        self.names = list(names)
         while len(self.rows) < len(names):
             self._add_row()
         while len(self.rows) > len(names):
@@ -265,7 +317,10 @@ class AlbumApp:
         self.reverse_check.pack(side="left", padx=6)
         self.no_taken_note = ttk.Label(bar, text=f"{NO_TAKEN_MARK} " + tr(
             "촬영 정보가 없어 수정한 날짜로 대신함", "No date taken; date modified used instead"))
-        self.photo_list = PhotoList(order_frame, self.move)
+        ttk.Label(order_frame, foreground="gray", text=tr(
+            "파일 이름을 두 번 클릭하면 이름을 바꿀 수 있습니다.",
+            "Double-click a file name to rename the file.")).pack(anchor="w", pady=(0, 4))
+        self.photo_list = PhotoList(order_frame, self.move, self.rename)
         self.photo_list.pack(fill="both", expand=True)
 
         self.strip_number = tk.BooleanVar(value=False)
@@ -356,6 +411,36 @@ class AlbumApp:
         self.reverse_check.state(["disabled"])
         self._show_photos()
 
+    def rename(self, index, text):
+        """Rename the photo file of row index (the list's entry was closed with text)."""
+        folder = self._folder()
+        if self.busy or folder is None:
+            return
+        old = self.photos[index].name
+        try:
+            new = rename_photo(folder, old, text)
+        except ValueError:
+            self._show([tr(f'오류: 파일 이름에 {" ".join(FORBIDDEN_CHARS)} 는 쓸 수 없습니다.',
+                           f'Error: a file name cannot contain {" ".join(FORBIDDEN_CHARS)}')])
+            return
+        except FileExistsError as exc:
+            name = Path(exc.filename2 or text).name
+            self._show([tr(f"오류: 같은 이름의 파일이 이미 있습니다: {name}",
+                           f"Error: a file with that name already exists: {name}")])
+            return
+        except OSError as exc:
+            self._show([tr(f"오류: {old}의 이름을 바꾸지 못했습니다: {exc}",
+                           f"Error: could not rename {old}: {exc}")])
+            self.load_photos()  # the file may be gone; show the folder as it is
+            return
+        if new:
+            # Renaming keeps the file dates, so only the name changes.
+            self.photos[index] = replace(self.photos[index], name=new)
+            if self.mode() == CUSTOM:
+                self._show_photos()
+            else:
+                self.resort()
+
     def _date_text(self, photo):
         if self.dated_by == "created":
             return _format_date(photo.created)
@@ -414,6 +499,7 @@ class AlbumApp:
 
     def _set_busy(self, busy):
         self.busy = busy
+        self.photo_list.locked = busy
         state = "disabled" if busy else "normal"
         for button in (self.build_button, self.folder_button, self.output_button):
             button.configure(state=state)
@@ -421,6 +507,7 @@ class AlbumApp:
         self.open_button.configure(state="normal" if self.last_pdf and not busy else "disabled")
 
     def start(self):
+        self.photo_list.finish_edit()  # a name still being edited counts before the album is made
         folder = self.photo_dir.get().strip()
         if not folder:
             self._show([tr("사진 폴더를 먼저 골라 주세요.", "Please choose a photo folder first.")])

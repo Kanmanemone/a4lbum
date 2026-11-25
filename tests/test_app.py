@@ -3,6 +3,7 @@
 import os
 import time
 import tkinter as tk
+from tkinter import font
 from datetime import datetime
 
 import pytest
@@ -351,3 +352,111 @@ def test_strip_number_checkbox_explains_itself_on_hover(root):
     tip.hide()
     assert tip.window is None
 
+
+
+# --- 005: rename photo files ----------------------------------------------
+
+
+def files(folder):
+    return sorted(p.name for p in folder.iterdir())
+
+
+def test_rename_photo_keeps_extension_and_refuses_unsafe_names(photo_dir, make_jpeg):
+    make_jpeg("1_집.jpg")
+    make_jpeg("2_바다.jpg")
+    assert album_app.rename_photo(photo_dir, "1_집.jpg", "  1_우리 집 ") == "1_우리 집.jpg"
+    assert files(photo_dir) == ["1_우리 집.jpg", "2_바다.jpg"]
+    assert album_app.rename_photo(photo_dir, "2_바다.jpg", "   ") is None
+    assert album_app.rename_photo(photo_dir, "2_바다.jpg", "2_바다") is None
+    for bad in ["a/b", "a\\b", "a:b", "a*b", 'a"b', "a?b", "a<b", "a>b", "a|b"]:
+        with pytest.raises(ValueError):
+            album_app.rename_photo(photo_dir, "2_바다.jpg", bad)
+    with pytest.raises(FileExistsError):
+        album_app.rename_photo(photo_dir, "2_바다.jpg", "1_우리 집")
+    assert files(photo_dir) == ["1_우리 집.jpg", "2_바다.jpg"]
+
+
+def test_rename_photo_allows_a_case_only_change(photo_dir, make_jpeg):
+    make_jpeg("beach.jpg")
+    assert album_app.rename_photo(photo_dir, "beach.jpg", "Beach") == "Beach.jpg"
+    assert files(photo_dir) == ["Beach.jpg"]
+
+
+def open_edit(app, index):
+    # Tk cannot synthesize a double click, so check the binding and call what it calls.
+    assert app.photo_list.rows[index][0].bind("<Double-Button-1>")
+    app.photo_list.edit(index)
+    index_, entry = app.photo_list.editing
+    assert index_ == index
+    # Key events reach only a focused widget in a shown window.
+    app.root.deiconify()
+    entry.focus_force()
+    app.root.update()
+    return entry
+
+
+def test_double_click_edits_the_stem_and_return_renames(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    entry = open_edit(app, 1)
+    assert entry.get() == "B" and entry.selection_present()
+    label = app.photo_list.rows[1][0]
+    number = font.nametofont(label.cget("font") or "TkDefaultFont").measure("  2   ")
+    assert number > 0 and entry.grid_info()["padx"] == (number, 0)  # the row number stays visible
+    entry.delete(0, "end")
+    entry.insert(0, "Z")
+    entry.event_generate("<Return>")
+    assert app.photo_list.editing is None and not entry.winfo_exists()
+    assert files(photo_dir) == ["A.jpg", "C.jpg", "D.jpg", "Z.jpg"]
+    assert order(app) == ["A.jpg", "C.jpg", "D.jpg", "Z.jpg"]  # name sort places it again
+    assert app.photo_list.labels()[3] == "  4   Z.jpg"
+
+
+def test_escape_cancels_the_edit(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    entry = open_edit(app, 0)
+    entry.insert("end", "X")
+    entry.event_generate("<Escape>")
+    assert app.photo_list.editing is None
+    assert files(photo_dir) == ["A.jpg", "B.jpg", "C.jpg", "D.jpg"]
+
+
+def test_rename_in_custom_order_keeps_the_place(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.move(3, "top")
+    app.rename(0, "0_D")
+    assert order(app) == ["0_D.jpg", "A.jpg", "B.jpg", "C.jpg"] and app.sort_mode.get() == "커스텀"
+    app.rename(1, "Y")
+    assert order(app) == ["0_D.jpg", "Y.jpg", "B.jpg", "C.jpg"]
+
+
+def test_rename_errors_show_in_the_result_log(root, photo_dir, four_photos):
+    app = album_app.AlbumApp(root, str(photo_dir))
+    app.rename(0, "B")
+    assert log_lines(app) == ["오류: 같은 이름의 파일이 이미 있습니다: B.jpg"]
+    app.rename(0, "x/y")
+    assert log_lines(app) == ['오류: 파일 이름에 \\ / : * ? " < > | 는 쓸 수 없습니다.']
+    (photo_dir / "C.jpg").unlink()
+    app.rename(2, "Q")
+    assert log_lines(app)[0].startswith("오류: C.jpg의 이름을 바꾸지 못했습니다: ")
+    assert order(app) == ["A.jpg", "B.jpg", "D.jpg"]  # the folder is read again
+    assert files(photo_dir) == ["A.jpg", "B.jpg", "D.jpg"]
+
+
+def test_no_rename_while_busy_and_start_commits_an_open_edit(root, photo_dir, four_photos, monkeypatch):
+    names = []
+
+    def fake_build(photo_dir, output=None, font=None, order=None, strip_number=True):
+        names.append(order)
+        raise make_album.AlbumError("멈춤")
+
+    monkeypatch.setattr(album_app.make_album, "build_album", fake_build)
+    app = album_app.AlbumApp(root, str(photo_dir))
+    entry = open_edit(app, 0)
+    entry.delete(0, "end")
+    entry.insert(0, "E")
+    app.start()
+    assert app.photo_list.editing is None
+    app.photo_list.edit(0)
+    assert app.photo_list.editing is None  # locked while making the album
+    wait_until_idle(app)
+    assert names == [["B.jpg", "C.jpg", "D.jpg", "E.jpg"]]

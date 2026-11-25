@@ -42,6 +42,7 @@ Put the photos in one folder and rename each file to the caption you want on its
    - With a date sort, each row shows that date.
    - "Date taken" is the time the camera or phone recorded in the photo. Photos without it (screenshots, images saved by editing apps, etc.) use their date modified instead and get a **⚠** before the date. When any row has ⚠, its meaning is shown to the right of the sort controls.
    - Use **[▲] [▼]** on each row to move a photo one step, or **[To top] [To bottom]** to move it all the way. Once you press any of them, the sort shows **"Custom"**. Choosing a sort again discards your manual order.
+   - **Double-click a file name** to rename the photo file right there (the extension stays). Press Enter to rename, Esc to cancel. The note label comes from the new name.
 4. Tick **Drop a leading "number_" from file names in note labels** if needed. Hover over it to see what it does.
 5. Press **[Make album]**, and when it is done, check it with **[Open PDF]**.
 
