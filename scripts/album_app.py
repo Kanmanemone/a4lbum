@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, font, messagebox, ttk
 
+from PIL import Image, ImageOps, ImageTk
+
 import make_album
 from make_album import tr
 
@@ -35,6 +37,8 @@ CUSTOM = "custom"  # after the user moves a photo by hand; not selectable
 # Tk draws no color emoji, and the U+FE0F variant may show as a box.
 NO_TAKEN_MARK = "⚠"
 MOVES = ("up", "down", "top", "bottom")
+PREVIEW_DELAY_MS = 400  # rows the pointer only passes over are never opened
+PREVIEW_SIZE = 240  # long side of the hover preview, in pixels at 100% display scaling
 FORBIDDEN_CHARS = '\\/:*?"<>|'  # Windows refuses these; "/" and "\" would also move the file
 
 
@@ -149,6 +153,15 @@ def rename_photo(folder, name, new_stem):
     return new
 
 
+def make_thumbnail(path, size):
+    """A loaded copy of the photo, turned as in the album, its long side at most size pixels."""
+    with Image.open(path) as img:
+        img.draft("RGB", (size, size))  # JPEG decodes at a fraction of full size
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((size, size))
+        return img.copy()
+
+
 def _format_date(timestamp):
     return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -173,9 +186,14 @@ class PhotoList(ttk.Frame):
     rewrites label texts and rows are created or destroyed only when the count changes.
     """
 
-    def __init__(self, parent, on_move, on_rename):
+    def __init__(self, parent, on_move, on_rename, photo_path):
         super().__init__(parent)
-        self.on_move, self.on_rename = on_move, on_rename
+        self.on_move, self.on_rename, self.photo_path = on_move, on_rename, photo_path
+        self.thumbs = {}  # photo path -> PIL image, or None if it cannot be opened
+        self._decoded = queue.Queue()  # (path, image or None) from decoding threads
+        self.hover = None  # row index under the pointer
+        self.preview = None  # the preview window, if shown
+        self._pending = None  # after() id of the preview delay
         self.rows = []
         self.names = []
         self.locked = False  # no renaming while the album is being made
@@ -197,6 +215,7 @@ class PhotoList(ttk.Frame):
         self.bind("<Leave>", lambda _e: self.unbind_all("<MouseWheel>"))
 
     def _on_wheel(self, event):
+        self.hide_preview()
         if self.canvas.yview() != (0.0, 1.0):
             self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
 
@@ -205,6 +224,9 @@ class PhotoList(ttk.Frame):
         label = ttk.Label(self.inner, anchor="w")
         label.grid(row=index, column=0, sticky="ew")
         label.bind("<Double-Button-1>", lambda _e: self.edit(index))
+        label.bind("<Enter>", lambda _e: self._on_enter(index))
+        label.bind("<Leave>", lambda _e: self.hide_preview())
+        label.bind("<ButtonPress>", lambda _e: self.hide_preview(), add="+")
         date = ttk.Label(self.inner, anchor="e")
         date.grid(row=index, column=1, sticky="e", padx=(0, 12))
         # Width only for the one-symbol buttons; Korean words size themselves.
@@ -215,8 +237,81 @@ class PhotoList(ttk.Frame):
             button.grid(row=index, column=column, padx=(8, 0) if column == 4 else 0)
         self.rows.append((label, date, buttons))
 
+    # --- hover preview ---------------------------------------------------------
+
+    def _on_enter(self, index):
+        self.hide_preview()
+        if self.editing is None:
+            self.hover = index
+            self._pending = self.after(PREVIEW_DELAY_MS, self._request)
+
+    def _request(self):
+        """The pointer stayed on a name: show its preview, decoding it in a thread if needed."""
+        self._pending = None
+        path = str(self.photo_path(self.hover))
+        if path in self.thumbs:
+            self._show_preview(self.thumbs[path])
+            return
+        size = int(PREVIEW_SIZE * float(self.tk.call("tk", "scaling")) / (96 / 72))
+
+        def decode():
+            try:
+                image = make_thumbnail(path, size)
+            except Exception:  # any unreadable file just gets the "no preview" text
+                image = None
+            self._decoded.put((path, image))
+
+        threading.Thread(target=decode, daemon=True).start()
+        self.after(30, self._poll_decoded)
+
+    def _poll_decoded(self):
+        if not self.winfo_exists():  # the window was closed while decoding
+            return
+        try:
+            path, image = self._decoded.get_nowait()
+        except queue.Empty:
+            self.after(30, self._poll_decoded)
+            return
+        self.thumbs[path] = image
+        # Show it only if the pointer is still on that photo.
+        if self.hover is not None and self.preview is None and str(self.photo_path(self.hover)) == path:
+            self._show_preview(image)
+
+    def _show_preview(self, image):
+        self.preview = tk.Toplevel(self)
+        self.preview.wm_overrideredirect(True)
+        self.preview.attributes("-topmost", True)  # above the window even if that is kept on top
+        if image is None:
+            tk.Label(self.preview, text=tr("미리보기를 볼 수 없습니다", "No preview available"),
+                     background="#FFFFE1", relief="solid", borderwidth=1, padx=8, pady=6).pack()
+        else:
+            photo = ImageTk.PhotoImage(image, master=self.preview)
+            label = tk.Label(self.preview, image=photo, relief="solid", borderwidth=1)
+            label.image = photo  # Tk keeps no reference of its own
+            label.pack()
+        self.preview.update_idletasks()
+        x, y = self.winfo_pointerx() + 20, self.winfo_pointery() + 20
+        # Keep it on screen: flip to the other side of the pointer near the right or bottom edge.
+        if x + self.preview.winfo_reqwidth() > self.winfo_screenwidth():
+            x -= self.preview.winfo_reqwidth() + 40
+        if y + self.preview.winfo_reqheight() > self.winfo_screenheight():
+            y -= self.preview.winfo_reqheight() + 40
+        self.preview.wm_geometry(f"+{max(x, 0)}+{max(y, 0)}")
+
+    def hide_preview(self):
+        if self._pending is not None:
+            self.after_cancel(self._pending)
+            self._pending = None
+        self.hover = None
+        if self.preview is not None:
+            self.preview.destroy()
+            self.preview = None
+
+    # --- renaming ---------------------------------------------------------------
+
     def edit(self, index):
         """Cover row index's name (not its number) with an entry holding the name without its extension."""
+        self.hide_preview()
         self.finish_edit()
         if self.locked:
             return
@@ -246,6 +341,7 @@ class PhotoList(ttk.Frame):
     def show(self, names, dates, folder_chosen):
         """names and dates (text shown after the name, may be "") in list order."""
         self.finish_edit(commit=False)
+        self.hide_preview()
         self.names = list(names)
         while len(self.rows) < len(names):
             self._add_row()
@@ -327,7 +423,8 @@ class AlbumApp:
         ttk.Label(order_frame, foreground="gray", text=tr(
             "파일 이름을 두 번 클릭하면 이름을 바꿀 수 있습니다.",
             "Double-click a file name to rename the file.")).pack(anchor="w", pady=(0, 4))
-        self.photo_list = PhotoList(order_frame, self.move, self.rename)
+        self.photo_list = PhotoList(order_frame, self.move, self.rename,
+                                    lambda i: Path(self._folder(), self.photos[i].name))
         self.photo_list.pack(fill="both", expand=True)
 
         self.strip_number = tk.BooleanVar(value=False)
@@ -367,6 +464,7 @@ class AlbumApp:
     def load_photos(self, *_):
         folder = self._folder()
         self.photos = make_album.list_photo_files(folder) if folder else []
+        self.photo_list.thumbs.clear()  # the same names may now be other pictures
         self.taken_read = False
         if self.mode() == CUSTOM:
             self.sort_mode.set(sort_label("name"))

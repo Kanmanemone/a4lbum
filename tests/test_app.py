@@ -466,3 +466,90 @@ def test_no_rename_while_busy_and_start_commits_an_open_edit(root, photo_dir, fo
     assert app.photo_list.editing is None  # locked while making the album
     wait_until_idle(app)
     assert names == [["B.jpg", "C.jpg", "D.jpg", "E.jpg"]]
+
+
+# --- 006: hover preview -----------------------------------------------------
+
+
+def test_make_thumbnail_fits_turns_and_leaves_the_file(photo_dir, make_jpeg, make_broken):
+    from conftest import sha256
+
+    wide = make_jpeg("wide.jpg", size=(1200, 600))
+    before = sha256(wide)
+    thumb = album_app.make_thumbnail(wide, 240)
+    assert thumb.size == (240, 120)
+    assert sha256(wide) == before
+    # EXIF orientation 6 (rotate 90°): the album shows it standing, so does the preview.
+    turned = album_app.make_thumbnail(make_jpeg("turned.jpg", size=(1200, 600), orientation=6), 240)
+    assert turned.size == (120, 240)
+    with pytest.raises(Exception):
+        album_app.make_thumbnail(make_broken("broken.jpg"), 240)
+
+
+def wait_for_preview(app, timeout=10):
+    deadline = time.monotonic() + timeout
+    while app.photo_list.preview is None:
+        assert time.monotonic() < deadline, "no preview"
+        app.root.update()
+        time.sleep(0.02)
+    return app.photo_list.preview.winfo_children()[0]
+
+
+def hover(app, index):
+    app.photo_list.rows[index][0].event_generate("<Enter>")
+
+
+def test_hover_shows_a_preview_and_leaving_closes_it(root, photo_dir, make_jpeg, monkeypatch):
+    make_jpeg("1.jpg", size=(1200, 900))
+    monkeypatch.setattr(album_app, "PREVIEW_DELAY_MS", 1)
+    app = album_app.AlbumApp(root, str(photo_dir))
+    hover(app, 0)
+    label = wait_for_preview(app)
+    assert max(label.image.width(), label.image.height()) <= album_app.PREVIEW_SIZE * 2
+    app.photo_list.rows[0][0].event_generate("<Leave>")
+    assert app.photo_list.preview is None
+
+
+def test_leaving_before_the_delay_opens_nothing(root, photo_dir, make_jpeg, monkeypatch):
+    make_jpeg("1.jpg")
+    calls = []
+    monkeypatch.setattr(album_app, "make_thumbnail", lambda *a: calls.append(a))
+    app = album_app.AlbumApp(root, str(photo_dir))
+    hover(app, 0)
+    app.photo_list.rows[0][0].event_generate("<Leave>")
+    end = time.monotonic() + (album_app.PREVIEW_DELAY_MS + 200) / 1000
+    while time.monotonic() < end:
+        app.root.update()
+        time.sleep(0.02)
+    assert calls == [] and app.photo_list.preview is None
+
+
+def test_broken_file_says_no_preview_and_the_cache_is_reused(root, photo_dir, make_broken, monkeypatch):
+    make_broken("1.jpg")
+    calls = []
+    real = album_app.make_thumbnail
+    monkeypatch.setattr(album_app, "make_thumbnail", lambda *a: calls.append(a) or real(*a))
+    monkeypatch.setattr(album_app, "PREVIEW_DELAY_MS", 1)
+    app = album_app.AlbumApp(root, str(photo_dir))
+    hover(app, 0)
+    assert wait_for_preview(app).cget("text") == "미리보기를 볼 수 없습니다"
+    app.photo_list.hide_preview()
+    hover(app, 0)
+    wait_for_preview(app)
+    assert len(calls) == 1  # the second hover used the cache
+    app.load_photos()
+    assert app.photo_list.thumbs == {}
+
+
+def test_rename_and_list_changes_close_the_preview(root, photo_dir, four_photos, monkeypatch):
+    monkeypatch.setattr(album_app, "PREVIEW_DELAY_MS", 1)
+    app = album_app.AlbumApp(root, str(photo_dir))
+    hover(app, 0)
+    wait_for_preview(app)
+    app.photo_list.edit(0)
+    assert app.photo_list.preview is None
+    app.photo_list.finish_edit(commit=False)
+    hover(app, 1)
+    wait_for_preview(app)
+    app.move(1, "top")
+    assert app.photo_list.preview is None
